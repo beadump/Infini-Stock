@@ -1,7 +1,9 @@
-import { Plus, Package } from 'lucide-react'
+import { Download, Image, MoreHorizontal, Plus, Package } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { unitApi } from '../api'
 import { Badge } from '../components/ui/Badge'
+import { capitalize } from '../lib/utils'
+import { clampRowCount, exportToCsv, exportToDocx, exportToPdf } from '../lib/export'
 import { Button } from '../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/Table'
@@ -11,17 +13,30 @@ import { Select } from '../components/ui/Select'
 
 function SystemUnits() {
     const dialogState = useDialog()
+    const exportDialogState = useDialog()
+    const detailsDialogState = useDialog()
     const [units, setUnits] = useState([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
     const [searchQuery, setSearchQuery] = useState('')
     const [statusFilter, setStatusFilter] = useState('all')
+    const [exportFormat, setExportFormat] = useState('pdf')
+    const [exportRows, setExportRows] = useState('50')
+    const [exporting, setExporting] = useState(false)
+    const [selectedUnit, setSelectedUnit] = useState(null)
     const [formData, setFormData] = useState({
         deviceName: '',
         qrCode: '',
         status: 'active',
         location: '',
     })
+
+    const formatDateTime = (value) => {
+        if (!value) return '—'
+        const dt = new Date(value)
+        if (Number.isNaN(dt.getTime())) return '—'
+        return dt.toLocaleString()
+    }
 
     const handleInputChange = (e) => {
         const { name, value } = e.target
@@ -93,6 +108,67 @@ function SystemUnits() {
         dialogState.onOpenChange(false)
     }
 
+    const handleExport = async () => {
+        const max = filteredUnits.length
+        const count = clampRowCount(exportRows, max)
+        const rows = filteredUnits.slice(0, count).map((unit) => ({
+            deviceName: unit.deviceName,
+            qrCode: unit.qrCode,
+            status: capitalize(unit.status),
+            location: unit.location || '—',
+            linkedMonitors:
+                unit.monitorCount === 1
+                    ? '1 linked monitor'
+                    : `${unit.monitorCount} linked monitors`,
+            createdBy: unit.createdBy || 'Unknown',
+        }))
+
+        const columns = [
+            { key: 'deviceName', header: 'Device' },
+            { key: 'qrCode', header: 'QR Code' },
+            { key: 'status', header: 'Status' },
+            { key: 'location', header: 'Location' },
+            { key: 'linkedMonitors', header: 'Linked Monitors' },
+            { key: 'createdBy', header: 'Created By' },
+        ]
+
+        const stamp = new Date().toISOString().slice(0, 10)
+        const baseName = `system-units-${stamp}`
+
+        try {
+            setExporting(true)
+            if (exportFormat === 'csv') {
+                exportToCsv({
+                    filename: `${baseName}.csv`,
+                    columns,
+                    rows,
+                })
+            } else if (exportFormat === 'docx') {
+                await exportToDocx({
+                    filename: `${baseName}.docx`,
+                    title: `System Units (first ${count} rows)`,
+                    columns,
+                    rows,
+                })
+            } else {
+                await exportToPdf({
+                    filename: `${baseName}.pdf`,
+                    title: `System Units (first ${count} rows)`,
+                    columns,
+                    rows,
+                })
+            }
+            exportDialogState.onOpenChange(false)
+        } finally {
+            setExporting(false)
+        }
+    }
+
+    const openDetails = (unit) => {
+        setSelectedUnit(unit)
+        detailsDialogState.onOpenChange(true)
+    }
+
     return (
         <div className="content-full bg-[#171717]">
             <div className="content-centered">
@@ -106,14 +182,85 @@ function SystemUnits() {
                         </p>
                     </div>
 
-                    <Dialog open={dialogState.open} onOpenChange={dialogState.onOpenChange}>
-                        <DialogTrigger asChild>
-                            <Button>
-                                <Plus className="mr-2" size={20} />
-                                Add Unit
-                            </Button>
-                        </DialogTrigger>
-                        <DialogContent>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <Dialog open={exportDialogState.open} onOpenChange={exportDialogState.onOpenChange}>
+                            <DialogTrigger asChild>
+                                <Button variant="secondary">
+                                    <Download className="mr-2" size={18} />
+                                    Export
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                                <DialogHeader>
+                                    <DialogTitle>Export System Units</DialogTitle>
+                                    <DialogDescription>
+                                        Choose a format and how many rows to export.
+                                    </DialogDescription>
+                                </DialogHeader>
+
+                                <div className="mt-4 space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                                            Format
+                                        </label>
+                                        <Select
+                                            value={exportFormat}
+                                            onChange={(e) => setExportFormat(e.target.value)}
+                                            disabled={exporting}
+                                        >
+                                            <option value="pdf">PDF</option>
+                                            <option value="docx">DOCX</option>
+                                            <option value="csv">CSV</option>
+                                        </Select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                                            Rows to export
+                                        </label>
+                                        <Input
+                                            type="number"
+                                            min={1}
+                                            max={Math.max(filteredUnits.length, 1)}
+                                            value={exportRows}
+                                            onChange={(e) => setExportRows(e.target.value)}
+                                            disabled={exporting}
+                                            placeholder="e.g., 50"
+                                        />
+                                        <p className="mt-2 text-xs text-gray-500">
+                                            Available rows: {filteredUnits.length}. Leaving empty exports all.
+                                        </p>
+                                    </div>
+
+                                    <DialogFooter className="pt-2">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() => exportDialogState.onOpenChange(false)}
+                                            disabled={exporting}
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            onClick={handleExport}
+                                            disabled={exporting || filteredUnits.length === 0}
+                                        >
+                                            {exporting ? 'Exporting…' : 'Export'}
+                                        </Button>
+                                    </DialogFooter>
+                                </div>
+                            </DialogContent>
+                        </Dialog>
+
+                        <Dialog open={dialogState.open} onOpenChange={dialogState.onOpenChange}>
+                            <DialogTrigger asChild>
+                                <Button>
+                                    <Plus className="mr-2" size={20} />
+                                    Add Unit
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent>
                             <DialogHeader>
                                 <DialogTitle>Add New System Unit</DialogTitle>
                                 <DialogDescription>
@@ -189,8 +336,9 @@ function SystemUnits() {
                                     </Button>
                                 </DialogFooter>
                             </form>
-                        </DialogContent>
-                    </Dialog>
+                            </DialogContent>
+                        </Dialog>
+                    </div>
                 </div>
 
                 <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -222,6 +370,120 @@ function SystemUnits() {
                     </div>
                 </div>
 
+                <Dialog
+                    open={detailsDialogState.open}
+                    onOpenChange={(open) => {
+                        detailsDialogState.onOpenChange(open)
+                        if (!open) setSelectedUnit(null)
+                    }}
+                >
+                    <DialogContent className="max-w-lg">
+                        <DialogHeader>
+                            <DialogTitle>
+                                {selectedUnit?.deviceName || 'System Unit Details'}
+                            </DialogTitle>
+                            <DialogDescription>
+                                {selectedUnit?.qrCode
+                                    ? `QR: ${selectedUnit.qrCode}`
+                                    : 'View system unit information'}
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-[160px_1fr]">
+                            <div className="rounded-lg border border-[#3d2e5c] bg-[#0f0a1a] p-3">
+                                {selectedUnit?.imageData || selectedUnit?.imageUrl ? (
+                                    <img
+                                        src={selectedUnit.imageData || selectedUnit.imageUrl}
+                                        alt={selectedUnit.deviceName || 'System unit'}
+                                        className="h-36 w-full rounded-md object-cover"
+                                    />
+                                ) : (
+                                    <div className="flex h-36 items-center justify-center rounded-md border border-dashed border-[#3d2e5c] bg-[#0f0a1a]">
+                                        <div className="flex flex-col items-center gap-2 text-gray-500">
+                                            <Image size={20} />
+                                            <span className="text-xs">No image</span>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="space-y-3">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    {selectedUnit?.status ? (
+                                        <Badge variant={getStatusVariant(selectedUnit.status)}>
+                                            {capitalize(selectedUnit.status)}
+                                        </Badge>
+                                    ) : null}
+                                    {selectedUnit?.qrCode ? (
+                                        <code className="inline-flex rounded-md bg-[#111827] px-2.5 py-1 text-xs font-semibold text-white ring-1 ring-white/10">
+                                            {selectedUnit.qrCode}
+                                        </code>
+                                    ) : null}
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-2">
+                                    <div className="rounded-md border border-[#3d2e5c] bg-[#0f0a1a] px-3 py-2">
+                                        <div className="text-[11px] uppercase tracking-wider text-gray-500">
+                                            Created By
+                                        </div>
+                                        <div className="text-sm text-gray-200">
+                                            {selectedUnit?.createdBy || 'Unknown'}
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-md border border-[#3d2e5c] bg-[#0f0a1a] px-3 py-2">
+                                        <div className="text-[11px] uppercase tracking-wider text-gray-500">
+                                            Created At
+                                        </div>
+                                        <div className="text-sm text-gray-200">
+                                            {formatDateTime(selectedUnit?.createdAt)}
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-md border border-[#3d2e5c] bg-[#0f0a1a] px-3 py-2">
+                                        <div className="text-[11px] uppercase tracking-wider text-gray-500">
+                                            Location
+                                        </div>
+                                        <div className="text-sm text-gray-200">
+                                            {selectedUnit?.location || '—'}
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-md border border-[#3d2e5c] bg-[#0f0a1a] px-3 py-2">
+                                        <div className="text-[11px] uppercase tracking-wider text-gray-500">
+                                            Linked Monitors
+                                        </div>
+                                        <div className="text-sm text-gray-200">
+                                            {typeof selectedUnit?.monitorCount === 'number'
+                                                ? `${selectedUnit.monitorCount} linked monitor${selectedUnit.monitorCount === 1 ? '' : 's'}`
+                                                : '—'}
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-md border border-[#3d2e5c] bg-[#0f0a1a] px-3 py-2">
+                                        <div className="text-[11px] uppercase tracking-wider text-gray-500">
+                                            Description
+                                        </div>
+                                        <div className="text-sm text-gray-200">
+                                            {selectedUnit?.description || '—'}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <DialogFooter className="pt-4">
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                onClick={() => detailsDialogState.onOpenChange(false)}
+                            >
+                                Close
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
                 <div className="rounded-xl border border-[#3d2e5c] bg-[#0f0a1a] overflow-hidden">
                     {loading ? (
                         <div className="py-12 text-center text-gray-400">
@@ -240,6 +502,7 @@ function SystemUnits() {
                                     <TableHead>Status</TableHead>
                                     <TableHead>Location</TableHead>
                                     <TableHead>Linked Monitors</TableHead>
+                                    <TableHead className="text-right">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -263,18 +526,30 @@ function SystemUnits() {
                                             </TableCell>
                                             <TableCell>
                                                 <Badge variant={getStatusVariant(unit.status)}>
-                                                    {unit.status}
+                                                    {capitalize(unit.status)}
                                                 </Badge>
                                             </TableCell>
                                             <TableCell>{unit.location || '—'}</TableCell>
                                             <TableCell className="text-gray-400">
                                                 {unit.monitorCount} linked monitor{unit.monitorCount === 1 ? '' : 's'}
                                             </TableCell>
+                                            <TableCell className="text-right">
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="text-gray-300 hover:text-white"
+                                                    onClick={() => openDetails(unit)}
+                                                    aria-label={`View details for ${unit.deviceName}`}
+                                                >
+                                                    <MoreHorizontal size={18} />
+                                                </Button>
+                                            </TableCell>
                                         </TableRow>
                                     ))
                                 ) : (
                                     <TableRow>
-                                        <TableCell colSpan="5" className="text-center py-12">
+                                        <TableCell colSpan="6" className="text-center py-12">
                                             <div className="inline-flex flex-col items-center justify-center">
                                                 <Package className="text-gray-600 mb-3" size={40} />
                                                 <p className="text-gray-400">

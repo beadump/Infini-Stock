@@ -6,7 +6,15 @@ async function listActivityLogs(req, res) {
         const limitRaw = req.query.limit
         const limit = Math.min(Math.max(Number(limitRaw || 50) || 50, 1), 200)
 
-        const logs = await assetService.listActivityLogs(limit)
+        const role = req.auth?.role
+        const userId = req.auth?.userId
+        const includeAll = role === 'admin'
+
+        const logs = await assetService.listActivityLogs({
+            limit,
+            userId,
+            includeAll,
+        })
         return ok(
             res,
             logs.map((log) => ({
@@ -19,6 +27,8 @@ async function listActivityLogs(req, res) {
                 oldStatus: log.old_status,
                 newStatus: log.new_status,
                 userId: log.user_id,
+                userName: log.user?.full_name || null,
+                userEmail: log.user?.email || null,
                 timestamp: log.timestamp,
             })),
         )

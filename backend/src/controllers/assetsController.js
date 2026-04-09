@@ -1,6 +1,63 @@
 const assetService = require('../services/assetService')
 const { ok, badRequest, serverError } = require('../utils/http')
 
+async function createAsset(req, res) {
+    try {
+        const {
+            type,
+            qrCode,
+            location,
+            status,
+            parentQrCode,
+            imageData,
+            description,
+        } = req.body || {}
+
+        if (!type) return badRequest(res, 'type is required')
+        const allowedTypes = ['unit', 'monitor']
+        if (!allowedTypes.includes(type)) {
+            return badRequest(res, 'Invalid type')
+        }
+
+        if (imageData && typeof imageData !== 'string') {
+            return badRequest(res, 'imageData must be a base64 string')
+        }
+
+        const result = await assetService.createAsset({
+            type,
+            qrCode,
+            location,
+            status,
+            parentQrCode,
+            imageData,
+            description,
+            userId: req.auth?.userId,
+        })
+
+        if (result.error) {
+            const statusCode = result.statusCode || 400
+            return res.status(statusCode).json({ message: result.error })
+        }
+
+        const asset = result.asset
+        return ok(res, {
+            id: asset.id,
+            qrCode: asset.qr_code,
+            type: asset.type,
+            status: asset.status,
+            location: asset.location,
+            parentId: asset.parent?.id || null,
+            parentQrCode: asset.parent?.qr_code || null,
+            imageData: asset.image_data || null,
+            description: asset.description || null,
+            createdBy: asset.creator?.full_name || null,
+            createdAt: asset.created_at,
+        })
+    } catch {
+        return serverError(res, 'Failed to create asset')
+    }
+}
+
 async function scanAsset(req, res) {
     try {
         const { qrCode } = req.body
@@ -15,7 +72,12 @@ async function scanAsset(req, res) {
             type: asset.type,
             status: asset.status,
             location: asset.location,
+            imageData: asset.image_data || null,
+            description: asset.description || null,
             parentId: asset.parent?.id || null,
+            parentQrCode: asset.parent?.qr_code || null,
+            createdBy: asset.creator?.full_name || null,
+            createdAt: asset.created_at,
         })
     } catch {
         return serverError(res, 'Failed to scan asset')
@@ -34,6 +96,8 @@ async function listAssets(req, res) {
                 type: asset.type,
                 status: asset.status,
                 location: asset.location,
+                imageData: asset.image_data || null,
+                description: asset.description || null,
                 parentId: asset.parent?.id || null,
                 parentQrCode: asset.parent?.qr_code || null,
                 createdBy: asset.creator?.full_name || null,
@@ -155,6 +219,7 @@ async function iotScanUpdate(req, res) {
 }
 
 module.exports = {
+    createAsset,
     listAssets,
     scanAsset,
     updateLocation,

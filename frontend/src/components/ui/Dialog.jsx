@@ -42,7 +42,8 @@ export function DialogContent({ children, className = '' }) {
             />
 
             {/* Modal */}
-            <div className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-[#404040] bg-[#171717] p-6 shadow-lg animate-in fade-in zoom-in-95">
+            <div className={`fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-[#404040] bg-[#171717] p-6 shadow-lg animate-in fade-in zoom-in-95 ${className}`}
+            >
                 <button
                     onClick={() => onOpenChange(false)}
                     className="absolute right-4 top-4 rounded-md text-gray-400 hover:text-white transition-colors"

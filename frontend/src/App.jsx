@@ -9,6 +9,7 @@ import QRGenerator from './pages/QRGenerator'
 import ActivityLogs from './pages/ActivityLogs'
 import Users from './pages/Users'
 import Login from './pages/Login'
+import ScanQrFab from './components/ScanQrFab'
 import './index.css'
 
 function App() {
@@ -65,7 +66,7 @@ function App() {
                                 <Sidebar />
                                 <div className="flex-1 flex flex-col">
                                     <Header />
-                                    <main className="flex-1 overflow-auto pt-16">
+                                    <main className="flex-1 overflow-auto pt-[75px]">
                                         <Routes>
                                             <Route path="/" element={<Dashboard />} />
                                             <Route
@@ -99,6 +100,7 @@ function App() {
                                             />
                                         </Routes>
                                     </main>
+                                    <ScanQrFab />
                                 </div>
                             </div>
                         ) : (

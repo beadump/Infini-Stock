@@ -1,11 +1,14 @@
 import { BarChart3, Package, Monitor, QrCode, Activity, Users, Menu, X, Zap, LogOut } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, useDialog } from './ui/Dialog'
+import { Button } from './ui/Button'
 
 function Sidebar() {
     const [open, setOpen] = useState(true)
     const location = useLocation()
     const navigate = useNavigate()
+    const logoutDialog = useDialog()
 
     const menuItems = [
         { path: '/', label: 'Dashboard', icon: BarChart3 },
@@ -19,9 +22,14 @@ function Sidebar() {
     const isActive = (path) => location.pathname === path
 
     const handleLogout = () => {
+        logoutDialog.onOpenChange(true)
+    }
+
+    const confirmLogout = () => {
         localStorage.removeItem('authToken')
         localStorage.removeItem('user')
         window.dispatchEvent(new Event('auth-change'))
+        logoutDialog.onOpenChange(false)
         navigate('/login')
     }
 
@@ -79,6 +87,32 @@ function Sidebar() {
             </aside>
 
             <div className="lg:ml-64" />
+
+            <Dialog open={logoutDialog.open} onOpenChange={logoutDialog.onOpenChange}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Confirm Logout</DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to logout? You will need to login again to access the system.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-3 sm:gap-0">
+                        <Button
+                            variant="outline"
+                            onClick={() => logoutDialog.onOpenChange(false)}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="destructive"
+                            onClick={confirmLogout}
+                        >
+                            <LogOut className="mr-2" size={16} />
+                            Logout
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </>
     )
 }

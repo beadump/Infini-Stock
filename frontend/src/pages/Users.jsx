@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/
 import { Input } from '../components/ui/Input'
 import { Select } from '../components/ui/Select'
 import { Card } from '../components/ui/Card'
-import axios from 'axios'
+import { adminApi } from '../api'
 
 function Users() {
     const [users, setUsers] = useState([])
@@ -16,6 +16,18 @@ function Users() {
     const [isEditMode, setIsEditMode] = useState(false)
     const [editingUserId, setEditingUserId] = useState(null)
 
+    const [touched, setTouched] = useState({
+        full_name: false,
+        email: false,
+        password: false,
+    })
+
+    const [formErrors, setFormErrors] = useState({
+        full_name: '',
+        email: '',
+        password: '',
+    })
+
     const ROLES = ['admin', 'manager', 'technician', 'staff', 'viewer']
 
     const [formData, setFormData] = useState({
@@ -25,6 +37,44 @@ function Users() {
         role: 'staff',
     })
 
+    const validateEmail = (value) => {
+        if (isEditMode) return ''
+        const email = (value || '').trim()
+        if (!email) return 'Email is required'
+        const basicEmailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+        if (!basicEmailOk) return 'Enter a valid email address'
+        if (!email.toLowerCase().endsWith('@gmail.com')) {
+            return 'Email must be a @gmail.com address'
+        }
+        return ''
+    }
+
+    const validateFullName = (value) => {
+        const name = (value || '').trim()
+        if (!name) return 'Full name is required'
+        if (name.length < 3) return 'Full name is too short'
+        return ''
+    }
+
+    const validatePassword = (value) => {
+        const password = value || ''
+        if (isEditMode && !password) return ''
+        if (!password) return 'Password is required'
+        if (password.length < 8) return 'Password must be at least 8 characters'
+        if (!/[a-z]/.test(password)) return 'Password must include a lowercase letter'
+        if (!/[A-Z]/.test(password)) return 'Password must include an uppercase letter'
+        if (!/[0-9]/.test(password)) return 'Password must include a number'
+        return ''
+    }
+
+    const validateForm = (data) => {
+        return {
+            full_name: validateFullName(data.full_name),
+            email: validateEmail(data.email),
+            password: validatePassword(data.password),
+        }
+    }
+
     // Fetch users on mount
     useEffect(() => {
         fetchUsers()
@@ -33,16 +83,11 @@ function Users() {
     const fetchUsers = async () => {
         try {
             setLoading(true)
-            const token = localStorage.getItem('authToken')
-            const response = await axios.get('http://localhost:5000/api/admin/users', {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                },
-            })
+            const response = await adminApi.listUsers()
             setUsers(response.data)
             setError('')
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to fetch users')
+            setError(err.response?.data?.message || err.message || 'Failed to fetch users')
             console.error('Fetch users error:', err)
         } finally {
             setLoading(false)
@@ -69,6 +114,17 @@ function Users() {
                 role: 'staff',
             })
         }
+
+        setTouched({
+            full_name: false,
+            email: false,
+            password: false,
+        })
+        setFormErrors({
+            full_name: '',
+            email: '',
+            password: '',
+        })
         setIsDialogOpen(true)
     }
 
@@ -80,13 +136,36 @@ function Users() {
             password: '',
             role: 'staff',
         })
+        setTouched({
+            full_name: false,
+            email: false,
+            password: false,
+        })
+        setFormErrors({
+            full_name: '',
+            email: '',
+            password: '',
+        })
     }
 
     const handleInputChange = (e) => {
         const { name, value } = e.target
-        setFormData((prev) => ({
+
+        setFormData((prev) => {
+            const next = {
+                ...prev,
+                [name]: value,
+            }
+
+            // realtime validation
+            const nextErrors = validateForm(next)
+            setFormErrors(nextErrors)
+            return next
+        })
+
+        setTouched((prev) => ({
             ...prev,
-            [name]: value,
+            [name]: true,
         }))
     }
 
@@ -95,20 +174,26 @@ function Users() {
         setError('')
         setSuccess('')
 
+        const nextErrors = validateForm(formData)
+        setFormErrors(nextErrors)
+        setTouched({
+            full_name: true,
+            email: true,
+            password: true,
+        })
+
+        const hasErrors = Object.values(nextErrors).some(Boolean)
+        if (hasErrors) {
+            setError('Please fix the highlighted fields')
+            return
+        }
+
         try {
             const token = localStorage.getItem('authToken')
 
             if (isEditMode) {
                 // Update user
-                const response = await axios.patch(
-                    `http://localhost:5000/api/admin/users/${editingUserId}`,
-                    formData,
-                    {
-                        headers: {
-                            Authorization: `Bearer ${token}`,
-                        },
-                    }
-                )
+                const response = await adminApi.updateUser(editingUserId, formData)
                 setSuccess('User updated successfully')
                 setUsers(
                     users.map((u) =>
@@ -117,23 +202,19 @@ function Users() {
                 )
             } else {
                 // Create new user
-                const response = await axios.post(
-                    'http://localhost:5000/api/admin/users',
-                    formData,
-                    {
-                        headers: {
-                            Authorization: `Bearer ${token}`,
-                        },
-                    }
+                const response = await adminApi.createUser(formData)
+                setSuccess(
+                    response.data?.verification_sent
+                        ? 'User created. Verification email sent (expires in 5 minutes).'
+                        : 'User created successfully'
                 )
-                setSuccess('User created successfully')
                 setUsers([...users, response.data])
             }
 
             handleCloseDialog()
             setTimeout(() => setSuccess(''), 3000)
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to save user')
+            setError(err.response?.data?.message || err.message || 'Failed to save user')
             console.error('Save user error:', err)
         }
     }
@@ -144,36 +225,19 @@ function Users() {
         }
 
         try {
-            const token = localStorage.getItem('authToken')
-            await axios.delete(
-                `http://localhost:5000/api/admin/users/${userId}`,
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                }
-            )
+            await adminApi.deleteUser(userId)
             setSuccess('User deleted successfully')
             setUsers(users.filter((u) => u.id !== userId))
             setTimeout(() => setSuccess(''), 3000)
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to delete user')
+            setError(err.response?.data?.message || err.message || 'Failed to delete user')
             console.error('Delete user error:', err)
         }
     }
 
     const handleToggleActive = async (userId, currentStatus) => {
         try {
-            const token = localStorage.getItem('authToken')
-            const response = await axios.patch(
-                `http://localhost:5000/api/admin/users/${userId}`,
-                { is_active: !currentStatus },
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                }
-            )
+            const response = await adminApi.updateUser(userId, { is_active: !currentStatus })
             setUsers(
                 users.map((u) => (u.id === userId ? response.data : u))
             )
@@ -182,7 +246,7 @@ function Users() {
             )
             setTimeout(() => setSuccess(''), 2000)
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to update user')
+            setError(err.response?.data?.message || err.message || 'Failed to update user')
             console.error('Toggle active error:', err)
         }
     }
@@ -349,6 +413,9 @@ function Users() {
                                 placeholder="John Doe"
                                 required
                             />
+                            {touched.full_name && formErrors.full_name ? (
+                                <p className="mt-1 text-sm text-red-400">{formErrors.full_name}</p>
+                            ) : null}
                         </div>
 
                         <div>
@@ -360,10 +427,16 @@ function Users() {
                                 name="email"
                                 value={formData.email}
                                 onChange={handleInputChange}
-                                placeholder="john@example.com"
+                                placeholder="name@gmail.com"
                                 required
                                 disabled={isEditMode}
                             />
+                            {!isEditMode ? (
+                                <p className="mt-1 text-xs text-gray-500">Only @gmail.com emails are allowed.</p>
+                            ) : null}
+                            {touched.email && formErrors.email ? (
+                                <p className="mt-1 text-sm text-red-400">{formErrors.email}</p>
+                            ) : null}
                         </div>
 
                         <div>
@@ -378,6 +451,13 @@ function Users() {
                                 placeholder="••••••••"
                                 required={!isEditMode}
                             />
+                            {touched.password && formErrors.password ? (
+                                <p className="mt-1 text-sm text-red-400">{formErrors.password}</p>
+                            ) : (
+                                <p className="mt-1 text-xs text-gray-500">
+                                    8+ chars, upper/lowercase, number
+                                </p>
+                            )}
                         </div>
 
                         <div>
@@ -406,6 +486,7 @@ function Users() {
                             <Button
                                 type="submit"
                                 className="flex-1"
+                                disabled={Object.values(formErrors).some(Boolean)}
                             >
                                 {isEditMode ? 'Update User' : 'Create User'}
                             </Button>

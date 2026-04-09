@@ -22,24 +22,28 @@ const allowedOrigins = [
     'http://192.168.1.2:5000',
 ]
 
-app.use(
-    cors({
-        origin: (origin, callback) => {
-            // Allow requests with no origin (like mobile apps or curl requests)
-            if (!origin) {
-                return callback(null, true);
-            }
+const corsOptions = {
+    origin: (origin, callback) => {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) {
+            return callback(null, true)
+        }
 
-            // Check if origin is in allowlist or starts with localhost
-            if (allowedOrigins.includes(origin) || origin.startsWith('http://localhost:')) {
-                callback(null, true);
-            } else {
-                callback(new Error('Not allowed by CORS'));
-            }
-        },
-        credentials: true,
-    }),
-)
+        // Check if origin is in allowlist or starts with localhost
+        if (allowedOrigins.includes(origin) || origin.startsWith('http://localhost:')) {
+            callback(null, true)
+        } else {
+            callback(new Error('Not allowed by CORS'))
+        }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    optionsSuccessStatus: 204,
+}
+
+app.use(cors(corsOptions))
+app.options('*', cors(corsOptions))
 app.use(express.json())
 
 app.get('/', (req, res) => {

@@ -1,7 +1,9 @@
-import { Plus, Monitor } from 'lucide-react'
+import { Download, Image, MoreHorizontal, Plus, Monitor } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { monitorApi } from '../api'
 import { Badge } from '../components/ui/Badge'
+import { capitalize } from '../lib/utils'
+import { clampRowCount, exportToCsv, exportToDocx, exportToPdf } from '../lib/export'
 import { Button } from '../components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/Table'
@@ -11,17 +13,30 @@ import { Select } from '../components/ui/Select'
 
 function Monitors() {
     const dialogState = useDialog()
+    const exportDialogState = useDialog()
+    const detailsDialogState = useDialog()
     const [monitors, setMonitors] = useState([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
     const [searchQuery, setSearchQuery] = useState('')
     const [statusFilter, setStatusFilter] = useState('all')
+    const [exportFormat, setExportFormat] = useState('pdf')
+    const [exportRows, setExportRows] = useState('50')
+    const [exporting, setExporting] = useState(false)
+    const [selectedMonitor, setSelectedMonitor] = useState(null)
     const [formData, setFormData] = useState({
         deviceName: '',
         qrCode: '',
         status: 'active',
         linkedUnit: '',
     })
+
+    const formatDateTime = (value) => {
+        if (!value) return '—'
+        const dt = new Date(value)
+        if (Number.isNaN(dt.getTime())) return '—'
+        return dt.toLocaleString()
+    }
 
     const handleInputChange = (e) => {
         const { name, value } = e.target
@@ -99,6 +114,64 @@ function Monitors() {
         dialogState.onOpenChange(false)
     }
 
+    const handleExport = async () => {
+        const max = filteredMonitors.length
+        const count = clampRowCount(exportRows, max)
+        const rows = filteredMonitors.slice(0, count).map((monitor) => ({
+            deviceName: monitor.deviceName,
+            qrCode: monitor.qrCode,
+            status: capitalize(monitor.status),
+            linkedUnit: monitor.linkedUnit?.deviceName || '—',
+            description: monitor.description || 'No description',
+            createdBy: monitor.createdBy || 'Unknown',
+        }))
+
+        const columns = [
+            { key: 'deviceName', header: 'Device' },
+            { key: 'qrCode', header: 'QR Code' },
+            { key: 'status', header: 'Status' },
+            { key: 'linkedUnit', header: 'Linked Unit' },
+            { key: 'description', header: 'Description' },
+            { key: 'createdBy', header: 'Created By' },
+        ]
+
+        const stamp = new Date().toISOString().slice(0, 10)
+        const baseName = `monitors-${stamp}`
+
+        try {
+            setExporting(true)
+            if (exportFormat === 'csv') {
+                exportToCsv({
+                    filename: `${baseName}.csv`,
+                    columns,
+                    rows,
+                })
+            } else if (exportFormat === 'docx') {
+                await exportToDocx({
+                    filename: `${baseName}.docx`,
+                    title: `Monitors (first ${count} rows)`,
+                    columns,
+                    rows,
+                })
+            } else {
+                await exportToPdf({
+                    filename: `${baseName}.pdf`,
+                    title: `Monitors (first ${count} rows)`,
+                    columns,
+                    rows,
+                })
+            }
+            exportDialogState.onOpenChange(false)
+        } finally {
+            setExporting(false)
+        }
+    }
+
+    const openDetails = (monitor) => {
+        setSelectedMonitor(monitor)
+        detailsDialogState.onOpenChange(true)
+    }
+
     return (
         <div className="content-full bg-[#171717]">
             <div className="content-centered">
@@ -112,14 +185,85 @@ function Monitors() {
                         </p>
                     </div>
 
-                    <Dialog open={dialogState.open} onOpenChange={dialogState.onOpenChange}>
-                        <DialogTrigger asChild>
-                            <Button>
-                                <Plus className="mr-2" size={20} />
-                                Add Monitor
-                            </Button>
-                        </DialogTrigger>
-                        <DialogContent>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <Dialog open={exportDialogState.open} onOpenChange={exportDialogState.onOpenChange}>
+                            <DialogTrigger asChild>
+                                <Button variant="secondary">
+                                    <Download className="mr-2" size={18} />
+                                    Export
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                                <DialogHeader>
+                                    <DialogTitle>Export Monitors</DialogTitle>
+                                    <DialogDescription>
+                                        Choose a format and how many rows to export.
+                                    </DialogDescription>
+                                </DialogHeader>
+
+                                <div className="mt-4 space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                                            Format
+                                        </label>
+                                        <Select
+                                            value={exportFormat}
+                                            onChange={(e) => setExportFormat(e.target.value)}
+                                            disabled={exporting}
+                                        >
+                                            <option value="pdf">PDF</option>
+                                            <option value="docx">DOCX</option>
+                                            <option value="csv">CSV</option>
+                                        </Select>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                                            Rows to export
+                                        </label>
+                                        <Input
+                                            type="number"
+                                            min={1}
+                                            max={Math.max(filteredMonitors.length, 1)}
+                                            value={exportRows}
+                                            onChange={(e) => setExportRows(e.target.value)}
+                                            disabled={exporting}
+                                            placeholder="e.g., 50"
+                                        />
+                                        <p className="mt-2 text-xs text-gray-500">
+                                            Available rows: {filteredMonitors.length}. Leaving empty exports all.
+                                        </p>
+                                    </div>
+
+                                    <DialogFooter className="pt-2">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() => exportDialogState.onOpenChange(false)}
+                                            disabled={exporting}
+                                        >
+                                            Cancel
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            onClick={handleExport}
+                                            disabled={exporting || filteredMonitors.length === 0}
+                                        >
+                                            {exporting ? 'Exporting…' : 'Export'}
+                                        </Button>
+                                    </DialogFooter>
+                                </div>
+                            </DialogContent>
+                        </Dialog>
+
+                        <Dialog open={dialogState.open} onOpenChange={dialogState.onOpenChange}>
+                            <DialogTrigger asChild>
+                                <Button>
+                                    <Plus className="mr-2" size={20} />
+                                    Add Monitor
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent>
                             <DialogHeader>
                                 <DialogTitle>Add New Monitor</DialogTitle>
                                 <DialogDescription>
@@ -195,9 +339,113 @@ function Monitors() {
                                     </Button>
                                 </DialogFooter>
                             </form>
-                        </DialogContent>
-                    </Dialog>
+                            </DialogContent>
+                        </Dialog>
+                    </div>
                 </div>
+
+                <Dialog
+                    open={detailsDialogState.open}
+                    onOpenChange={(open) => {
+                        detailsDialogState.onOpenChange(open)
+                        if (!open) setSelectedMonitor(null)
+                    }}
+                >
+                    <DialogContent className="max-w-lg">
+                        <DialogHeader>
+                            <DialogTitle>
+                                {selectedMonitor?.deviceName || 'Monitor Details'}
+                            </DialogTitle>
+                            <DialogDescription>
+                                {selectedMonitor?.qrCode
+                                    ? `QR: ${selectedMonitor.qrCode}`
+                                    : 'View monitor information'}
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-[160px_1fr]">
+                            <div className="rounded-lg border border-[#3d2e5c] bg-[#0f0a1a] p-3">
+                                {selectedMonitor?.imageData || selectedMonitor?.imageUrl ? (
+                                    <img
+                                        src={selectedMonitor.imageData || selectedMonitor.imageUrl}
+                                        alt={selectedMonitor.deviceName || 'Monitor'}
+                                        className="h-36 w-full rounded-md object-cover"
+                                    />
+                                ) : (
+                                    <div className="flex h-36 items-center justify-center rounded-md border border-dashed border-[#3d2e5c] bg-[#0f0a1a]">
+                                        <div className="flex flex-col items-center gap-2 text-gray-500">
+                                            <Image size={20} />
+                                            <span className="text-xs">No image</span>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="space-y-3">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    {selectedMonitor?.status ? (
+                                        <Badge variant={getStatusVariant(selectedMonitor.status)}>
+                                            {capitalize(selectedMonitor.status)}
+                                        </Badge>
+                                    ) : null}
+                                    {selectedMonitor?.qrCode ? (
+                                        <code className="inline-flex rounded-md bg-[#2d1f4a] px-2.5 py-1 text-xs font-semibold text-lavender-300 ring-1 ring-lavender-600/20">
+                                            {selectedMonitor.qrCode}
+                                        </code>
+                                    ) : null}
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-2">
+                                    <div className="rounded-md border border-[#3d2e5c] bg-[#0f0a1a] px-3 py-2">
+                                        <div className="text-[11px] uppercase tracking-wider text-gray-500">
+                                            Created By
+                                        </div>
+                                        <div className="text-sm text-gray-200">
+                                            {selectedMonitor?.createdBy || 'Unknown'}
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-md border border-[#3d2e5c] bg-[#0f0a1a] px-3 py-2">
+                                        <div className="text-[11px] uppercase tracking-wider text-gray-500">
+                                            Created At
+                                        </div>
+                                        <div className="text-sm text-gray-200">
+                                            {formatDateTime(selectedMonitor?.createdAt)}
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-md border border-[#3d2e5c] bg-[#0f0a1a] px-3 py-2">
+                                        <div className="text-[11px] uppercase tracking-wider text-gray-500">
+                                            Linked Unit
+                                        </div>
+                                        <div className="text-sm text-gray-200">
+                                            {selectedMonitor?.linkedUnit?.deviceName || '—'}
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-md border border-[#3d2e5c] bg-[#0f0a1a] px-3 py-2">
+                                        <div className="text-[11px] uppercase tracking-wider text-gray-500">
+                                            Description
+                                        </div>
+                                        <div className="text-sm text-gray-200">
+                                            {selectedMonitor?.description || '—'}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <DialogFooter className="pt-4">
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                onClick={() => detailsDialogState.onOpenChange(false)}
+                            >
+                                Close
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
 
                 <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div className="flex flex-wrap gap-2">
@@ -245,7 +493,7 @@ function Monitors() {
                                     <TableHead>QR Code</TableHead>
                                     <TableHead>Status</TableHead>
                                     <TableHead>Linked Unit</TableHead>
-                                    <TableHead>Description</TableHead>
+                                    <TableHead className="text-right">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -269,14 +517,23 @@ function Monitors() {
                                             </TableCell>
                                             <TableCell>
                                                 <Badge variant={getStatusVariant(monitor.status)}>
-                                                    {monitor.status}
+                                                    {capitalize(monitor.status)}
                                                 </Badge>
                                             </TableCell>
                                             <TableCell>
                                                 {monitor.linkedUnit?.deviceName || '—'}
                                             </TableCell>
-                                            <TableCell className="text-gray-400">
-                                                {monitor.description || 'No description'}
+                                            <TableCell className="text-right">
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="text-gray-300 hover:text-white"
+                                                    onClick={() => openDetails(monitor)}
+                                                    aria-label={`View details for ${monitor.deviceName}`}
+                                                >
+                                                    <MoreHorizontal size={18} />
+                                                </Button>
                                             </TableCell>
                                         </TableRow>
                                     ))

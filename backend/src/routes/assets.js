@@ -9,6 +9,8 @@ const router = express.Router()
 
 router.get('/', requireAuth, requirePermission('asset:read'), assetsController.listAssets)
 
+router.post('/', requireAuth, requirePermission('asset:create'), assetsController.createAsset)
+
 router.post('/scan', requireAuth, requirePermission('asset:scan'), assetsController.scanAsset)
 router.patch('/location', requireAuth, requirePermission('asset:move'), assetsController.updateLocation)
 router.patch('/status', requireAuth, requirePermission('asset:update'), assetsController.updateStatus)

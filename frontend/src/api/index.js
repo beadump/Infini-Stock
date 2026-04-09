@@ -6,10 +6,15 @@ export const authApi = {
     login: (email, password) =>
         api.post('/auth/login', { email, password }),
     getCurrentUser: () => api.get('/auth/me'),
+    updateMe: ({ full_name, email } = {}) => api.patch('/auth/me', { full_name, email }),
+    changePassword: ({ current_password, new_password } = {}) =>
+        api.patch('/auth/password', { current_password, new_password }),
 }
 
 export const assetApi = {
     listAssets: () => api.get('/assets'),
+    createAsset: ({ type, qrCode, location, status, parentQrCode, imageData, description } = {}) =>
+        api.post('/assets', { type, qrCode, location, status, parentQrCode, imageData, description }),
     scanAsset: (qrCode) => api.post('/assets/scan', { qrCode }),
     updateLocation: (qrCode, location) =>
         api.patch('/assets/location', { qrCode, location }),
@@ -35,4 +40,11 @@ export const monitorApi = {
 
 export const activityApi = {
     listLogs: (limit = 50) => api.get('/activity-logs', { params: { limit } }),
+}
+
+export const adminApi = {
+    listUsers: () => api.get('/admin/users'),
+    createUser: (payload) => api.post('/admin/users', payload),
+    updateUser: (id, payload) => api.patch(`/admin/users/${id}`, payload),
+    deleteUser: (id) => api.delete(`/admin/users/${id}`),
 }

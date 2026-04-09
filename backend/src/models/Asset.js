@@ -43,6 +43,14 @@ module.exports = new EntitySchema({
             type: 'uuid',
             nullable: false,
         },
+        image_data: {
+            type: 'text',
+            nullable: true,
+        },
+        description: {
+            type: 'text',
+            nullable: true,
+        },
     },
     relations: {
         parent: {
