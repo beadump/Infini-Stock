@@ -28,18 +28,19 @@ import { activityApi, assetApi } from '../api'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
+import { isViewOnly } from '../lib/permissions'
 import { ChangeDetailsModal } from '../components/ActionModals'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/Table'
 import FullPageLoader from '../components/FullPageLoader'
 import TablePagination from '../components/TablePagination'
 
-const STATUS_ORDER = ['active', 'repair', 'broken', 'inactive', 'other']
+const STATUS_ORDER = ['active', 'repair', 'broken', 'inactive', 'maintenance']
 const STATUS_LABELS = {
     active: 'Active',
     repair: 'Repair',
     broken: 'Broken',
     inactive: 'Inactive',
-    other: 'Other',
+    maintenance: 'Maintenance',
 }
 
 const CHART_COLORS = {
@@ -50,6 +51,12 @@ const CHART_COLORS = {
     lavender700: '#7e22ce',
     dark800: '#171717',
     dark600: '#2d2d2d',
+    // Status-specific colors
+    statusActive: '#10b981',     // Green - working/operational
+    statusRepair: '#f59e0b',     // Orange - needs attention
+    statusBroken: '#ef4444',     // Red - not working
+    statusInactive: '#6b7280',   // Gray - not in use
+    statusMaintenance: '#8b5cf6',      // Purple - under maintenance
 }
 
 function toDateKeyLocal(date) {
@@ -85,6 +92,7 @@ function parseInputDate(value) {
 }
 
 function Dashboard() {
+    const viewOnly = isViewOnly()
     const [assets, setAssets] = useState([])
     const [logs, setLogs] = useState([])
     const [loading, setLoading] = useState(true)
@@ -94,6 +102,7 @@ function Dashboard() {
     const [selectedChangeLog, setSelectedChangeLog] = useState(null)
     const [changeDetailsOpen, setChangeDetailsOpen] = useState(false)
 
+    // Auto-refresh every 30 seconds for real-time activity monitoring
     useEffect(() => {
         const fetchData = async () => {
             try {
@@ -113,7 +122,14 @@ function Dashboard() {
                 setRefreshing(false)
             }
         }
+
+        // Initial fetch
         fetchData()
+
+        // Auto-refresh every 30 seconds
+        const intervalId = setInterval(fetchData, 30000)
+
+        return () => clearInterval(intervalId)
     }, [])
 
     const handleRefresh = async () => {
@@ -151,11 +167,20 @@ function Dashboard() {
         return result
     }
 
-    const LOG_PAGE_SIZE = 5
+    const LOG_PAGE_SIZE = 10 // Show 10 items per page for better overview
     const [logPage, setLogPage] = useState(0)
 
     const filteredLogs = useMemo(() => {
-        return logs || []
+        if (!logs || logs.length === 0) return []
+
+        // Filter to show only activities from the last 24 hours
+        const now = new Date()
+        const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+
+        return logs.filter(log => {
+            const logTime = new Date(log.timestamp)
+            return logTime >= twentyFourHoursAgo
+        })
     }, [logs])
 
     useEffect(() => {
@@ -185,37 +210,27 @@ function Dashboard() {
             return acc
         }, {})
 
-        return STATUS_ORDER.filter((status) => counts[status]).map((status) => ({
+        return STATUS_ORDER.map((status) => ({
             name: STATUS_LABELS[status] ?? status,
-            value: counts[status],
+            value: counts[status] || 0,
             status,
         }))
     }, [assets])
 
-    const inventoryByLocationData = useMemo(() => {
+    const topLocationsData = useMemo(() => {
         const byLocation = new Map()
         for (const asset of assets) {
             const location = asset?.location?.trim() || 'Unassigned'
-            const type = asset?.type || 'other'
             if (!byLocation.has(location)) {
-                byLocation.set(location, {
-                    location,
-                    unit: 0,
-                    monitor: 0,
-                    other: 0,
-                    total: 0,
-                })
+                byLocation.set(location, 0)
             }
-            const row = byLocation.get(location)
-            if (type === 'unit') row.unit += 1
-            else if (type === 'monitor') row.monitor += 1
-            else row.other += 1
-            row.total += 1
+            byLocation.set(location, byLocation.get(location) + 1)
         }
 
-        return Array.from(byLocation.values())
-            .sort((a, b) => b.total - a.total)
-            .map(({ total, ...rest }) => rest)
+        return Array.from(byLocation.entries())
+            .map(([location, count]) => ({ location, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5)
     }, [assets])
 
     const activityOverTimeData = useMemo(() => {
@@ -360,95 +375,101 @@ function Dashboard() {
                 </div>
 
                 {/* Charts + Recent Activity in one grid */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-8 lg:[grid-template-rows:auto_auto] items-stretch">
-                    <Card className="lg:col-span-2 lg:row-start-1 flex flex-col min-h-[318px]">
-                        <CardHeader className="pb-3 pt-4 px-5">
-                            <div>
-                                <CardTitle className="text-lg font-semibold text-white flex items-center gap-2">
-                                    <TrendingUp size={18} className="text-lavender-400" />
-                                    Activity
-                                </CardTitle>
-                                <p className="mt-1 text-sm text-gray-300/80">
-                                    Activity logs over the last 14 days
-                                </p>
-                            </div>
-                        </CardHeader>
-                        <CardContent className="p-5 flex-1 min-h-0">
-                            {loading ? (
-                                <div className="h-full flex items-center justify-center text-gray-400 text-sm">
-                                    Loading chart…
+                <div className={`grid gap-5 mb-8 items-stretch ${viewOnly
+                        ? 'grid-cols-1 lg:grid-cols-2'
+                        : 'grid-cols-1 lg:grid-cols-3 lg:[grid-template-rows:auto_auto]'
+                    }`}>
+                    {!viewOnly && (
+                        <Card className="lg:col-span-2 lg:row-start-1 flex flex-col min-h-[318px]">
+                            <CardHeader className="pb-3 pt-4 px-5">
+                                <div>
+                                    <CardTitle className="text-lg font-semibold text-white flex items-center gap-2">
+                                        <TrendingUp size={18} className="text-lavender-400" />
+                                        Activity
+                                    </CardTitle>
+                                    <p className="mt-1 text-sm text-gray-300/80">
+                                        Activity logs over the last 14 days
+                                    </p>
                                 </div>
-                            ) : error ? (
-                                <div className="h-full flex items-center justify-center text-red-400 text-sm">
-                                    Warning: {error}
-                                </div>
-                            ) : (
-                                <div className="h-full">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <AreaChart data={activityOverTimeData} margin={{ top: 10, right: 16, left: -18, bottom: 0 }}>
-                                            <defs>
-                                                <linearGradient id="activityFill" x1="0" y1="0" x2="0" y2="1">
-                                                    <stop offset="0%" stopColor={CHART_COLORS.lavender500} stopOpacity={0.35} />
-                                                    <stop offset="70%" stopColor={CHART_COLORS.lavender500} stopOpacity={0.08} />
-                                                    <stop offset="100%" stopColor={CHART_COLORS.lavender500} stopOpacity={0} />
-                                                </linearGradient>
-                                                <filter id="activityGlow" x="-30%" y="-30%" width="160%" height="160%">
-                                                    <feGaussianBlur stdDeviation="3" result="coloredBlur" />
-                                                    <feMerge>
-                                                        <feMergeNode in="coloredBlur" />
-                                                        <feMergeNode in="SourceGraphic" />
-                                                    </feMerge>
-                                                </filter>
-                                            </defs>
-                                            <CartesianGrid
-                                                stroke={CHART_COLORS.dark600}
-                                                strokeDasharray="3 3"
-                                                vertical={false}
-                                            />
-                                            <XAxis
-                                                dataKey="label"
-                                                tick={{ fill: '#9ca3af', fontSize: 11 }}
-                                                axisLine={{ stroke: CHART_COLORS.dark600 }}
-                                                tickLine={false}
-                                            />
-                                            <YAxis
-                                                tick={{ fill: '#9ca3af', fontSize: 11 }}
-                                                axisLine={{ stroke: CHART_COLORS.dark600 }}
-                                                tickLine={false}
-                                                allowDecimals={false}
-                                            />
-                                            <Tooltip
-                                                contentStyle={{
-                                                    background: CHART_COLORS.dark800,
-                                                    border: `1px solid ${CHART_COLORS.dark600}`,
-                                                    borderRadius: 6,
-                                                }}
-                                                itemStyle={{ color: '#e5e7eb' }}
-                                                labelStyle={{ color: '#9ca3af' }}
-                                                cursor={{
-                                                    stroke: CHART_COLORS.lavender500,
-                                                    strokeWidth: 1,
-                                                }}
-                                            />
-                                            <Area
-                                                type="monotone"
-                                                dataKey="count"
-                                                name="Activity"
-                                                stroke={CHART_COLORS.lavender500}
-                                                strokeWidth={2.8}
-                                                fill="url(#activityFill)"
-                                                dot={false}
-                                                isAnimationActive={true}
-                                                filter="url(#activityGlow)"
-                                            />
-                                        </AreaChart>
-                                    </ResponsiveContainer>
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
+                            </CardHeader>
+                            <CardContent className="p-5 flex-1 min-h-0">
+                                {loading ? (
+                                    <div className="h-full flex items-center justify-center text-gray-400 text-sm">
+                                        Loading chart…
+                                    </div>
+                                ) : error ? (
+                                    <div className="h-full flex items-center justify-center text-red-400 text-sm">
+                                        Warning: {error}
+                                    </div>
+                                ) : (
+                                    <div className="h-full">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <AreaChart data={activityOverTimeData} margin={{ top: 10, right: 16, left: -18, bottom: 0 }}>
+                                                <defs>
+                                                    <linearGradient id="activityFill" x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="0%" stopColor={CHART_COLORS.lavender500} stopOpacity={0.35} />
+                                                        <stop offset="70%" stopColor={CHART_COLORS.lavender500} stopOpacity={0.08} />
+                                                        <stop offset="100%" stopColor={CHART_COLORS.lavender500} stopOpacity={0} />
+                                                    </linearGradient>
+                                                    <filter id="activityGlow" x="-30%" y="-30%" width="160%" height="160%">
+                                                        <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+                                                        <feMerge>
+                                                            <feMergeNode in="coloredBlur" />
+                                                            <feMergeNode in="SourceGraphic" />
+                                                        </feMerge>
+                                                    </filter>
+                                                </defs>
+                                                <CartesianGrid
+                                                    stroke={CHART_COLORS.dark600}
+                                                    strokeDasharray="3 3"
+                                                    vertical={false}
+                                                />
+                                                <XAxis
+                                                    dataKey="label"
+                                                    tick={{ fill: '#9ca3af', fontSize: 11 }}
+                                                    axisLine={{ stroke: CHART_COLORS.dark600 }}
+                                                    tickLine={false}
+                                                />
+                                                <YAxis
+                                                    tick={{ fill: '#9ca3af', fontSize: 11 }}
+                                                    axisLine={{ stroke: CHART_COLORS.dark600 }}
+                                                    tickLine={false}
+                                                    allowDecimals={false}
+                                                />
+                                                <Tooltip
+                                                    contentStyle={{
+                                                        background: CHART_COLORS.dark800,
+                                                        border: `1px solid ${CHART_COLORS.dark600}`,
+                                                        borderRadius: 6,
+                                                    }}
+                                                    itemStyle={{ color: '#e5e7eb' }}
+                                                    labelStyle={{ color: '#9ca3af' }}
+                                                    cursor={{
+                                                        stroke: CHART_COLORS.lavender500,
+                                                        strokeWidth: 1,
+                                                    }}
+                                                />
+                                                <Area
+                                                    type="monotone"
+                                                    dataKey="count"
+                                                    name="Activity"
+                                                    stroke={CHART_COLORS.lavender500}
+                                                    strokeWidth={2.8}
+                                                    fill="url(#activityFill)"
+                                                    dot={false}
+                                                    isAnimationActive={true}
+                                                    filter="url(#activityGlow)"
+                                                />
+                                            </AreaChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    )}
 
-                    <Card className="lg:col-start-3 lg:row-start-1 h-full flex flex-col min-h-[318px]">
+                    <Card className={`h-full flex flex-col min-h-[318px] ${!viewOnly ? 'lg:col-start-3 lg:row-start-1' : ''
+                        }`}>
                         <CardHeader className="pb-3 pt-4 px-5">
                             <div>
                                 <CardTitle className="text-lg font-semibold text-white flex items-center gap-2">
@@ -504,18 +525,18 @@ function Dashboard() {
                                             >
                                                 {statusChartData.map((entry) => {
                                                     const colorByStatus = {
-                                                        active: CHART_COLORS.lavender500,
-                                                        repair: CHART_COLORS.lavender700,
-                                                        broken: CHART_COLORS.lavender600,
-                                                        inactive: CHART_COLORS.lavender400,
-                                                        other: CHART_COLORS.lavender300,
+                                                        active: CHART_COLORS.statusActive,
+                                                        repair: CHART_COLORS.statusRepair,
+                                                        broken: CHART_COLORS.statusBroken,
+                                                        inactive: CHART_COLORS.statusInactive,
+                                                        maintenance: CHART_COLORS.statusMaintenance,
                                                     }
                                                     return (
                                                         <Cell
                                                             key={entry.status}
                                                             fill={
                                                                 colorByStatus[entry.status] ||
-                                                                CHART_COLORS.lavender400
+                                                                CHART_COLORS.statusMaintenance
                                                             }
                                                         />
                                                     )
@@ -529,117 +550,118 @@ function Dashboard() {
                     </Card>
 
                     {/* Recent Activity - aligned with Location (same row) */}
-                    <Card className="lg:col-span-2 lg:row-start-2 h-full flex flex-col min-h-[320px]">
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3 pt-4 px-5">
-                            <div className="flex items-center gap-2">
-                                <Activity className="text-lavender-400" size={18} />
-                                <div>
-                                    <CardTitle className="text-sm font-semibold text-white">Recent Activity</CardTitle>
-                                    <p className="mt-1 text-xs text-gray-400">Latest logs and updates</p>
-                                </div>
-                            </div>
-                            <Badge className="bg-lavender-600 text-white text-xs">Live</Badge>
-                        </CardHeader>
-                        <CardContent className="p-0 flex-1 min-h-0">
-                            {loading ? (
-                                <div className="py-12 text-center">
-                                    <div className="inline-block animate-spin">
-                                        <Zap className="text-gray-400" size={24} />
+                    {!viewOnly && (
+                        <Card className="lg:col-span-2 lg:row-start-2 flex flex-col max-h-[500px]">
+                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3 pt-4 px-5 flex-shrink-0">
+                                <div className="flex items-center gap-2">
+                                    <Activity className="text-lavender-400" size={18} />
+                                    <div>
+                                        <CardTitle className="text-sm font-semibold text-white">Recent Activity</CardTitle>
+                                        <p className="mt-1 text-xs text-gray-400">Latest logs and updates</p>
                                     </div>
-                                    <p className="text-gray-400 mt-3 text-sm">Loading activity…</p>
                                 </div>
-                            ) : error ? (
-                                <p className="py-6 text-red-400 text-sm px-5">⚠️ {error}</p>
-                            ) : filteredLogs.length > 0 ? (
-                                <div className="overflow-x-auto">
-                                    <Table>
-                                        <TableHeader>
-                                            <TableRow className="hover:bg-transparent">
-                                                <TableHead className="px-5 py-2 text-[10px] font-semibold uppercase text-gray-400">Name</TableHead>
-                                                <TableHead className="px-5 py-2 text-[10px] font-semibold uppercase text-gray-400">Timestamp</TableHead>
-                                                <TableHead className="px-5 py-2 text-[10px] font-semibold uppercase text-gray-400">Action</TableHead>
-                                                <TableHead className="px-5 py-2 text-[10px] font-semibold uppercase text-gray-400">Item</TableHead>
-                                                <TableHead className="px-5 py-2 text-[10px] font-semibold uppercase text-gray-400">Details</TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            {pagedLogs.map((log) => {
-                                                // Determine item display and type
-                                                let itemDisplay = '—'
-                                                if (log.assetQrCode) {
-                                                    itemDisplay = `Asset: ${log.assetQrCode?.slice(0, 10) || 'N/A'}`
-                                                } else if (log.monitor) {
-                                                    itemDisplay = `Mon: ${log.monitor.qr_code || 'N/A'}`
-                                                } else if (log.unit) {
-                                                    itemDisplay = `Unit: ${log.unit.qr_code || 'N/A'}`
-                                                }
+                                <Badge className="bg-lavender-600 text-white text-xs">Live</Badge>
+                            </CardHeader>
+                            <CardContent className="p-0 flex-1 min-h-0 overflow-y-auto">
+                                {loading ? (
+                                    <div className="py-12 text-center">
+                                        <div className="inline-block animate-spin">
+                                            <Zap className="text-gray-400" size={24} />
+                                        </div>
+                                        <p className="text-gray-400 mt-3 text-sm">Loading activity…</p>
+                                    </div>
+                                ) : error ? (
+                                    <p className="py-6 text-red-400 text-sm px-5">⚠️ {error}</p>
+                                ) : filteredLogs.length > 0 ? (
+                                    <div className="overflow-x-auto">
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow className="hover:bg-transparent">
+                                                    <TableHead className="px-5 py-2 text-[10px] font-semibold uppercase text-gray-400">Name</TableHead>
+                                                    <TableHead className="px-5 py-2 text-[10px] font-semibold uppercase text-gray-400">Timestamp</TableHead>
+                                                    <TableHead className="px-5 py-2 text-[10px] font-semibold uppercase text-gray-400">Action</TableHead>
+                                                    <TableHead className="px-5 py-2 text-[10px] font-semibold uppercase text-gray-400">Item</TableHead>
+                                                    <TableHead className="px-5 py-2 text-[10px] font-semibold uppercase text-gray-400">Details</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {pagedLogs.map((log) => {
+                                                    // Determine item display and type
+                                                    let itemDisplay = '—'
+                                                    if (log.assetQrCode) {
+                                                        itemDisplay = `Asset: ${log.assetQrCode?.slice(0, 10) || 'N/A'}`
+                                                    } else if (log.monitor) {
+                                                        itemDisplay = `Mon: ${log.monitor.qr_code || 'N/A'}`
+                                                    } else if (log.unit) {
+                                                        itemDisplay = `Unit: ${log.unit.qr_code || 'N/A'}`
+                                                    }
 
-                                                // Preference order: description > old/new status/location
-                                                let detailsDisplay = '—'
-                                                if (log.description) {
-                                                    detailsDisplay = log.description
-                                                } else if (log.oldStatus && log.newStatus) {
-                                                    detailsDisplay = `${log.oldStatus} → ${log.newStatus}`
-                                                } else if (log.oldLocation && log.newLocation) {
-                                                    detailsDisplay = `${log.oldLocation} → ${log.newLocation}`
-                                                }
+                                                    // Preference order: description > old/new status/location
+                                                    let detailsDisplay = '—'
+                                                    if (log.description) {
+                                                        detailsDisplay = log.description
+                                                    } else if (log.oldStatus && log.newStatus) {
+                                                        detailsDisplay = `${log.oldStatus} → ${log.newStatus}`
+                                                    } else if (log.oldLocation && log.newLocation) {
+                                                        detailsDisplay = `${log.oldLocation} → ${log.newLocation}`
+                                                    }
 
-                                                return (
-                                                    <TableRow key={log.id}>
-                                                        <TableCell className="px-5 py-3 text-xs text-gray-300">
-                                                            {log.userName || '—'}
-                                                        </TableCell>
-                                                        <TableCell className="px-5 py-3 text-xs text-gray-400">
-                                                            {new Date(log.timestamp).toLocaleTimeString(undefined, {
-                                                                hour: '2-digit',
-                                                                minute: '2-digit',
-                                                                second: '2-digit',
-                                                            })}
-                                                        </TableCell>
-                                                        <TableCell className="px-5 py-3">
-                                                            <Badge className="bg-lavender-600/20 text-lavender-300 text-xs border border-lavender-600/40">
-                                                                {log.action}
-                                                            </Badge>
-                                                        </TableCell>
-                                                        <TableCell className="px-5 py-3">
-                                                            <code className="text-xs bg-dark-700 text-lavender-300 px-2.5 py-1 rounded border border-border-dark font-mono">
-                                                                {itemDisplay}
-                                                            </code>
-                                                        </TableCell>
-                                                        <TableCell className="px-5 py-3 text-gray-400 text-xs">
-                                                            <div className="flex items-center justify-between gap-2">
-                                                                <span className="truncate max-w-xs" title={detailsDisplay}>
-                                                                    {detailsDisplay.length > 50 ? `${detailsDisplay.substring(0, 50)}...` : detailsDisplay}
-                                                                </span>
-                                                                {(log.description && (log.description.includes(';') || log.description.length > 50)) && (
-                                                                    <Button
-                                                                        variant="ghost"
-                                                                        size="sm"
-                                                                        className="text-lavender-400 hover:text-lavender-300 text-xs px-2 py-0.5 h-auto whitespace-nowrap"
-                                                                        onClick={() => {
-                                                                            setSelectedChangeLog(log)
-                                                                            setChangeDetailsOpen(true)
-                                                                        }}
-                                                                    >
-                                                                        View More →
-                                                                    </Button>
-                                                                )}
-                                                            </div>
-                                                        </TableCell>
-                                                    </TableRow>
-                                                )
-                                            })}
-                                        </TableBody>
-                                    </Table>
-                                </div>
-                            ) : (
-                                <p className="py-12 text-center text-gray-500 text-sm">
-                                    No activity yet. Start tracking assets!
-                                </p>
-                            )}
-
+                                                    return (
+                                                        <TableRow key={log.id}>
+                                                            <TableCell className="px-5 py-3 text-xs text-gray-300">
+                                                                {log.userName || '—'}
+                                                            </TableCell>
+                                                            <TableCell className="px-5 py-3 text-xs text-gray-400">
+                                                                {new Date(log.timestamp).toLocaleTimeString(undefined, {
+                                                                    hour: '2-digit',
+                                                                    minute: '2-digit',
+                                                                    second: '2-digit',
+                                                                })}
+                                                            </TableCell>
+                                                            <TableCell className="px-5 py-3">
+                                                                <Badge className="bg-lavender-600/20 text-lavender-300 text-xs border border-lavender-600/40">
+                                                                    {log.action}
+                                                                </Badge>
+                                                            </TableCell>
+                                                            <TableCell className="px-5 py-3">
+                                                                <code className="text-xs bg-dark-700 text-lavender-300 px-2.5 py-1 rounded border border-border-dark font-mono">
+                                                                    {itemDisplay}
+                                                                </code>
+                                                            </TableCell>
+                                                            <TableCell className="px-5 py-3 text-gray-400 text-xs">
+                                                                <div className="flex items-center justify-between gap-2">
+                                                                    <span className="truncate max-w-xs" title={detailsDisplay}>
+                                                                        {detailsDisplay.length > 50 ? `${detailsDisplay.substring(0, 50)}...` : detailsDisplay}
+                                                                    </span>
+                                                                    {(log.description && (log.description.includes(';') || log.description.length > 50)) && (
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="sm"
+                                                                            className="text-lavender-400 hover:text-lavender-300 text-xs px-2 py-0.5 h-auto whitespace-nowrap"
+                                                                            onClick={() => {
+                                                                                setSelectedChangeLog(log)
+                                                                                setChangeDetailsOpen(true)
+                                                                            }}
+                                                                        >
+                                                                            View More →
+                                                                        </Button>
+                                                                    )}
+                                                                </div>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    )
+                                                })}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+                                ) : (
+                                    <p className="py-12 text-center text-gray-500 text-sm">
+                                        No activity in the last 24 hours
+                                    </p>
+                                )}
+                            </CardContent>
                             {filteredLogs.length > LOG_PAGE_SIZE ? (
-                                <div className="flex justify-end px-5 py-4 border-t border-white/10 bg-dark-800/50">
+                                <div className="flex justify-end px-5 py-4 border-t border-[#3d2e5c] bg-[#1a1530] flex-shrink-0">
                                     <TablePagination
                                         align="right"
                                         currentPage={logPage + 1}
@@ -648,18 +670,24 @@ function Dashboard() {
                                     />
                                 </div>
                             ) : null}
-                        </CardContent>
-                    </Card>
+                            {filteredLogs.length > 0 && (
+                                <div className="text-xs text-gray-400 px-5 py-2 border-t border-[#3d2e5c] text-center bg-[#1a1530] flex-shrink-0">
+                                    Showing last 24 hours • Auto-refresh every 30s
+                                </div>
+                            )}
+                        </Card>
+                    )}
 
-                    <Card className="lg:col-start-3 lg:row-start-2 h-full flex flex-col min-h-[320px]">
+                    <Card className={`h-full flex flex-col min-h-[320px] ${!viewOnly ? 'lg:col-start-3 lg:row-start-2' : ''
+                        }`}>
                         <CardHeader className="pb-3 pt-4 px-5">
                             <div>
                                 <CardTitle className="text-lg font-semibold text-white flex items-center gap-2">
                                     <BarChart3 size={18} className="text-lavender-400" />
-                                    Location
+                                    Top Locations
                                 </CardTitle>
                                 <p className="mt-1 text-sm text-gray-300/80">
-                                    Assets grouped by location
+                                    Top 5 locations by asset count
                                 </p>
                             </div>
                         </CardHeader>
@@ -672,7 +700,7 @@ function Dashboard() {
                                 <div className="h-full flex items-center justify-center text-red-400 text-sm">
                                     Error: {error}
                                 </div>
-                            ) : inventoryByLocationData.length === 0 ? (
+                            ) : topLocationsData.length === 0 ? (
                                 <div className="h-full flex items-center justify-center text-gray-500 text-sm">
                                     No locations
                                 </div>
@@ -680,7 +708,7 @@ function Dashboard() {
                                 <div className="h-full">
                                     <ResponsiveContainer width="100%" height="100%">
                                         <BarChart
-                                            data={inventoryByLocationData}
+                                            data={topLocationsData}
                                             margin={{ top: 10, right: 14, left: -18, bottom: 30 }}
                                         >
                                             <CartesianGrid
@@ -713,24 +741,9 @@ function Dashboard() {
                                                 labelStyle={{ color: '#9ca3af' }}
                                             />
                                             <Bar
-                                                dataKey="unit"
-                                                stackId="a"
-                                                name="Units"
+                                                dataKey="count"
+                                                name="Assets"
                                                 fill={CHART_COLORS.lavender500}
-                                                radius={[4, 4, 0, 0]}
-                                            />
-                                            <Bar
-                                                dataKey="monitor"
-                                                stackId="a"
-                                                name="Monitors"
-                                                fill={CHART_COLORS.lavender700}
-                                                radius={[4, 4, 0, 0]}
-                                            />
-                                            <Bar
-                                                dataKey="other"
-                                                stackId="a"
-                                                name="Other"
-                                                fill={CHART_COLORS.lavender300}
                                                 radius={[4, 4, 0, 0]}
                                             />
                                         </BarChart>
