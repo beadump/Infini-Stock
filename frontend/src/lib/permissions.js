@@ -5,7 +5,7 @@
 export function canEditData() {
     const user = JSON.parse(localStorage.getItem('user') || '{}')
     const role = user?.role?.toLowerCase()
-    
+
     // Staff and Viewer are read-only
     return role !== 'staff' && role !== 'viewer'
 }
