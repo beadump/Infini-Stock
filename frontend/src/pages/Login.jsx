@@ -26,7 +26,7 @@ function Login() {
 
         try {
             // Call backend login endpoint
-            const apiUrl = 'https://infinistock-backend.onrender.com/api'
+            const apiUrl = 'https://infini-stock.onrender.com/api'
             const response = await fetch(`${apiUrl}/auth/login`, {
                 method: 'POST',
                 headers: {
