@@ -8,6 +8,7 @@
         "dev:watch": "nodemon --signal SIGINT --delay 750ms src/index.js",
         "start": "node src/index.js",
         "seed": "node scripts/seed.js",
+        "rewrite-serials": "node scripts/rewrite-serial-numbers.js",
         "bootstrap-admin": "node src/scripts/bootstrap-admin.js"
     },
     "dependencies": {

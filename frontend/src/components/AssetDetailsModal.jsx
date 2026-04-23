@@ -1,7 +1,9 @@
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/Dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from './ui/Dialog'
 import { Badge } from './ui/Badge'
-import { Copy } from 'lucide-react'
+import { Button } from './ui/Button'
+import { Copy, Pencil } from 'lucide-react'
 import QRCode from 'react-qr-code'
+import { formatId } from '../lib/utils'
 
 const STATUS_LABELS = {
     active: 'Active',
@@ -49,7 +51,7 @@ const DetailRow = ({ label, value, copyable = false }) => {
     )
 }
 
-export function AssetDetailsModal({ isOpen, onClose, asset, loading = false }) {
+export function AssetDetailsModal({ isOpen, onClose, asset, loading = false, onEdit }) {
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
@@ -133,6 +135,7 @@ export function AssetDetailsModal({ isOpen, onClose, asset, loading = false }) {
                                     <div className="bg-[#1a1530] px-4 py-3 border-b border-[#3d2e5c]">
                                         <h3 className="text-sm font-semibold text-gray-200">Basic Information</h3>
                                     </div>
+                                    <DetailRow label="Infocom ID" value={formatId(asset.id)} copyable />
                                     <DetailRow label="Device Name" value={asset.deviceName} />
                                     <DetailRow label="QR Code" value={asset.qrCode} copyable />
                                     <DetailRow label="Type" value={asset.type ? asset.type.charAt(0).toUpperCase() + asset.type.slice(1) : asset.type} />
@@ -173,6 +176,29 @@ export function AssetDetailsModal({ isOpen, onClose, asset, loading = false }) {
                         </div>
                     )}
                 </div>
+
+                <DialogFooter className="pt-4 flex gap-2">
+                    {onEdit && (
+                        <Button
+                            type="button"
+                            onClick={() => {
+                                onClose(false)
+                                onEdit(asset)
+                            }}
+                            className="gap-2"
+                        >
+                            <Pencil size={16} />
+                            Edit
+                        </Button>
+                    )}
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => onClose(false)}
+                    >
+                        Close
+                    </Button>
+                </DialogFooter>
             </DialogContent>
         </Dialog>
     )

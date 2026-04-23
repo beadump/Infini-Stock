@@ -14,6 +14,7 @@ import {
 } from './ui/Dialog'
 import { PrintQRModal } from './ActionModals'
 import { AssetDetailsModal } from './AssetDetailsModal'
+import DeviceEditModal from './DeviceEditModal'
 
 
 export default function ScanQrFab() {
@@ -27,6 +28,9 @@ export default function ScanQrFab() {
     const [printQRModalOpen, setPrintQRModalOpen] = useState(false)
     const [cameraPermission, setCameraPermission] = useState('prompt') // 'prompt' | 'granted' | 'denied'
     const [requestingPermission, setRequestingPermission] = useState(false)
+
+    // Edit modal state
+    const [editOpen, setEditOpen] = useState(false)
 
     const videoRef = useRef(null)
     const controlsRef = useRef(null)
@@ -225,6 +229,20 @@ export default function ScanQrFab() {
         }
     }
 
+    // Called when Edit button is clicked inside AssetDetailsModal
+    const handleEdit = (assetToEdit) => {
+        // AssetDetailsModal already closes itself before calling onEdit,
+        // so we just open the edit modal here
+        setAsset(assetToEdit)
+        setEditOpen(true)
+    }
+
+    // Called when DeviceEditModal saves successfully
+    const handleSaved = (updatedDevice) => {
+        // Merge updated data back into asset so details modal reflects changes
+        setAsset((prev) => ({ ...prev, ...updatedDevice }))
+    }
+
     return (
         <>
             <Button
@@ -418,9 +436,24 @@ export default function ScanQrFab() {
             {/* Asset Details Modal */}
             <AssetDetailsModal
                 isOpen={detailsModalState.open}
-                onClose={() => detailsModalState.onOpenChange(false)}
+                onClose={(val) => detailsModalState.onOpenChange(val ?? false)}
                 asset={asset}
                 loading={busy}
+                onEdit={handleEdit}
+            />
+
+            {/* Device Edit Modal */}
+            <DeviceEditModal
+                open={editOpen}
+                onOpenChange={setEditOpen}
+                type={asset?.type}
+                device={asset}
+                onSaved={handleSaved}
+                onNotify={(msg, level) => {
+                    // Replace with your toast/notification system if you have one
+                    // e.g. toast.success(msg) / toast.error(msg)
+                    console.log(`[${level}]`, msg)
+                }}
             />
         </>
     )

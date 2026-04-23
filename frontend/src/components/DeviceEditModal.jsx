@@ -145,7 +145,11 @@ export default function DeviceEditModal({
 
     const handleChange = (e) => {
         const { name, value } = e.target
-        setDraft((prev) => ({ ...prev, [name]: value }))
+        const nextValue = name === 'serialNumber'
+            ? value.replace(/\D/g, '').slice(0, 5)
+            : value
+
+        setDraft((prev) => ({ ...prev, [name]: nextValue }))
     }
 
     const isEditFormValid = () => {
@@ -491,7 +495,10 @@ export default function DeviceEditModal({
                                             name="serialNumber"
                                             value={draft.serialNumber}
                                             onChange={handleChange}
-                                            placeholder="e.g., SN123456789"
+                                            inputMode="numeric"
+                                            pattern="[0-9]*"
+                                            maxLength={5}
+                                            placeholder="e.g., 78569"
                                         />
                                     </div>
                                 </>

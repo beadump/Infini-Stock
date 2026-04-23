@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import QRCode from 'react-qr-code'
 import { monitorApi, unitApi } from '../api'
 import { Badge } from '../components/ui/Badge'
-import { capitalize } from '../lib/utils'
+import { capitalize, formatId } from '../lib/utils'
 import { clampRowCount, exportToCsv } from '../lib/export'
 import { canEditData, isViewOnly, isTechnicianLimitedOps, getTechnicianOperations } from '../lib/permissions'
 import { Button } from '../components/ui/Button'
@@ -98,7 +98,10 @@ function Monitors() {
 
     const handleInputChange = (e) => {
         const { name, value } = e.target
-        const updated = { ...formData, [name]: value }
+        const nextValue = name === 'serialNumber'
+            ? value.replace(/\D/g, '').slice(0, 5)
+            : value
+        const updated = { ...formData, [name]: nextValue }
 
         // Generate QR code only once when device name is first entered
         if (name === 'deviceName') {
@@ -418,7 +421,7 @@ function Monitors() {
         const matchesCondition =
             conditionFilter === 'all' || monitor.condition === conditionFilter
         const haystack = [
-            monitor.deviceName,
+            formatId(monitor.id),
             monitor.qrCode,
             monitor.linkedUnit?.deviceName,
             monitor.description,
@@ -553,6 +556,7 @@ function Monitors() {
         const max = filteredMonitors.length
         const count = clampRowCount(exportRows, max)
         const rows = filteredMonitors.slice(0, count).map((monitor) => ({
+            id: formatId(monitor.id),
             deviceName: monitor.deviceName,
             qrCode: monitor.qrCode,
             modelType: monitor.modelType || 'N/A',
@@ -568,6 +572,7 @@ function Monitors() {
         }))
 
         const columns = [
+            { key: 'id', header: 'Infocom ID' },
             { key: 'deviceName', header: 'Device Name' },
             { key: 'qrCode', header: 'QR Code' },
             { key: 'modelType', header: 'Model Type' },
@@ -831,6 +836,9 @@ function Monitors() {
                                                     placeholder="e.g., DELL-U2723DE-001"
                                                     value={formData.serialNumber}
                                                     onChange={handleInputChange}
+                                                    inputMode="numeric"
+                                                    pattern="[0-9]*"
+                                                    maxLength={5}
                                                 />
                                             </div>
 
@@ -1114,6 +1122,18 @@ function Monitors() {
                         <DialogFooter className="pt-4 flex gap-2">
                             <Button
                                 type="button"
+                                onClick={() => {
+                                    detailsDialogState.onOpenChange(false)
+                                    openEdit(selectedMonitor)
+                                }}
+                                disabled={!canEdit}
+                                className="gap-2"
+                            >
+                                <Pencil size={16} />
+                                Edit
+                            </Button>
+                            <Button
+                                type="button"
                                 variant="outline"
                                 onClick={() => {
                                     setCurrentActionItem(selectedMonitor)
@@ -1209,7 +1229,7 @@ function Monitors() {
                         <Input
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="Search monitors by name, QR, or linked unit"
+                            placeholder="Search monitors by ID, QR, or linked unit"
                         />
                     </div>
                 </div>
@@ -1235,11 +1255,11 @@ function Monitors() {
                                             className="appearance-none w-4 h-4 border-2 border-[#3d2e5c] bg-[#0f0a1a] rounded cursor-pointer checked:bg-lavender-600 checked:border-lavender-600 checked:bg-[length:100%_100%] checked:[background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMCAyMCIgZmlsbD0id2hpdGUiPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgZD0iTTE2LjcwNyA1LjI5M2ExIDEgMCAwIDEgMCAxLjQxNGwtOCA4YTEgMSAwIDAgMS0xLjQxNCAwbC00LTRhMSAxIDAgMCAxIDEuNDE0LTEuNDE0TDggMTIuNTg2bDcuMjkzLTcuMjkzYTEgMSAwIDAgMSAxLjQxNCAweiIgY2xpcC1ydWxlPSJldmVub2RkIi8+PC9zdmc+')] checked:bg-center checked:bg-no-repeat transition-colors"
                                         />
                                     </TableHead>
+                                    <TableHead>Device ID</TableHead>
                                     <TableHead>Device</TableHead>
                                     <TableHead>QR Code</TableHead>
                                     <TableHead>Model</TableHead>
                                     <TableHead>Status</TableHead>
-                                    <TableHead>Condition</TableHead>
                                     <TableHead>Linked Unit</TableHead>
                                     <TableHead>Last Updated</TableHead>
                                     <TableHead className="text-right">Actions</TableHead>
@@ -1259,6 +1279,11 @@ function Monitors() {
                                                     onChange={() => toggleMonitorSelection(monitor.id)}
                                                     className="appearance-none w-4 h-4 border-2 border-[#3d2e5c] bg-[#0f0a1a] rounded cursor-pointer checked:bg-lavender-600 checked:border-lavender-600 checked:bg-[length:100%_100%] checked:[background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMCAyMCIgZmlsbD0id2hpdGUiPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgZD0iTTE2LjcwNyA1LjI5M2ExIDEgMCAwIDEgMCAxLjQxNGwtOCA4YTEgMSAwIDAgMS0xLjQxNCAwbC00LTRhMSAxIDAgMCAxIDEuNDE0LTEuNDE0TDggMTIuNTg2bDcuMjkzLTcuMjkzYTEgMSAwIDAgMSAxLjQxNCAweiIgY2xpcC1ydWxlPSJldmVub2RkIi8+PC9zdmc+')] checked:bg-center checked:bg-no-repeat transition-colors"
                                                 />
+                                            </TableCell>
+                                            <TableCell>
+                                                <code className="inline-block text-xs bg-gray-900 text-white px-3 py-2 rounded font-mono">
+                                                    {formatId(monitor.id)}
+                                                </code>
                                             </TableCell>
                                             <TableCell className="cursor-pointer max-w-[260px]">
                                                 <div className="truncate">
@@ -1281,11 +1306,6 @@ function Monitors() {
                                             <TableCell>
                                                 <Badge variant={getStatusVariant(monitor.status)}>
                                                     {capitalize(monitor.status)}
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell>
-                                                <Badge variant={monitor.condition === 'poor' ? 'secondary' : monitor.condition === 'fair' ? 'warning' : 'success'}>
-                                                    {capitalize(monitor.condition || 'unknown')}
                                                 </Badge>
                                             </TableCell>
                                             <TableCell className="text-gray-300 max-w-[180px] truncate">

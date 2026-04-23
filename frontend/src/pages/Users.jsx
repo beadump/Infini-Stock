@@ -137,7 +137,7 @@ function Users() {
         if (selectedUsers.size === pagedUsers.length) {
             setSelectedUsers(new Set())
         } else {
-            setSelectedUsers(new Set(pagedUsers.map(u => u._id)))
+            setSelectedUsers(new Set(pagedUsers.map(u => u.id)))
         }
     }
 
@@ -148,7 +148,7 @@ function Users() {
         try {
             const idsToDelete = Array.from(selectedUsers)
             await Promise.all(idsToDelete.map(id => adminApi.deleteUser(id)))
-            setUsers(prev => prev.filter(u => !idsToDelete.includes(u._id)))
+            setUsers(prev => prev.filter(u => !idsToDelete.includes(u.id)))
             setSelectedUsers(new Set())
             showToast(`${selectedUsers.size} user(s) deleted successfully`, 'success')
         } catch (err) {
@@ -425,15 +425,15 @@ function Users() {
                             </TableHeader>
                             <TableBody>
                                 {pagedUsers.map((user) => (
-                                    <TableRow key={user._id}
+                                    <TableRow key={user.id}
                                         onClick={() => handleOpenDialog(user)}
                                         className="hover:bg-white/5 transition-colors cursor-pointer"
                                     >
                                         <TableCell className="px-6 py-3" onClick={(e) => e.stopPropagation()}>
                                             <input
                                                 type="checkbox"
-                                                checked={selectedUsers.has(user._id)}
-                                                onChange={() => toggleUserSelection(user._id)}
+                                                checked={selectedUsers.has(user.id)}
+                                                onChange={() => toggleUserSelection(user.id)}
                                                 className="appearance-none w-4 h-4 border-2 border-[#3d2e5c] bg-[#0f0a1a] rounded cursor-pointer checked:bg-lavender-600 checked:border-lavender-600 checked:bg-[length:100%_100%] checked:[background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMCAyMCIgZmlsbD0id2hpdGUiPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgZD0iTTE2LjcwNyA1LjI5M2ExIDEgMCAwIDEgMCAxLjQxNGwtOCA4YTEgMSAwIDAgMS0xLjQxNCAwbC00LTRhMSAxIDAgMCAxIDEuNDE0LTEuNDE0TDggMTIuNTg2bDcuMjkzLTcuMjkzYTEgMSAwIDAgMSAxLjQxNCAweiIgY2xpcC1ydWxlPSJldmVub2RkIi8+PC9zdmc+')] checked:bg-center checked:bg-no-repeat transition-colors"
                                             />
                                         </TableCell>

@@ -1,8 +1,9 @@
-import { BarChart3, Package, Monitor, Activity, Users, Menu, X, Zap, LogOut } from 'lucide-react'
+import { BarChart3, Package, Monitor, Activity, Users, Menu, X, LogOut } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, useDialog } from './ui/Dialog'
 import { Button } from './ui/Button'
+import infocomLogo from '../assets/infocom-logo.png'
 
 function Sidebar() {
     const [open, setOpen] = useState(true)
@@ -75,15 +76,12 @@ function Sidebar() {
             >
                 <div className="h-full flex flex-col">
                     {/* Header */}
-                    <div className="p-[23px] border-b border-[#3d2e5c]">
-                        <div className="flex items-center gap-3">
-                            <Zap className="text-lavender-500" size={28} />
-                            <div>
-                                <h1 className="text-xl font-bold text-white">
-                                    Infini-Stock
-                                </h1>
-                            </div>
-                        </div>
+                    <div className="p-[9px] border-b border-[#3d2e5c] flex justify-center">
+                        <img
+                            src={infocomLogo}
+                            alt="Infocom"
+                            className="h-14 w-52"
+                        />
                     </div>
 
                     {/* Navigation */}

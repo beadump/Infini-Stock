@@ -51,12 +51,11 @@ const CHART_COLORS = {
     lavender700: '#7e22ce',
     dark800: '#171717',
     dark600: '#2d2d2d',
-    // Status-specific colors
-    statusActive: '#10b981',     // Green - working/operational
-    statusRepair: '#f59e0b',     // Orange - needs attention
-    statusBroken: '#ef4444',     // Red - not working
-    statusInactive: '#6b7280',   // Gray - not in use
-    statusMaintenance: '#8b5cf6',      // Purple - under maintenance
+    statusActive: '#10b981',
+    statusRepair: '#f59e0b',
+    statusBroken: '#ef4444',
+    statusInactive: '#6b7280',
+    statusMaintenance: '#8b5cf6',
 }
 
 function toDateKeyLocal(date) {
@@ -71,6 +70,22 @@ function formatShortDateLabel(date) {
         month: 'short',
         day: '2-digit',
     }).format(date)
+}
+
+// Parse JSON description into human-readable text
+function parseDescription(description) {
+    if (!description) return null
+    try {
+        const parsed = JSON.parse(description)
+        if (parsed?.changes && Array.isArray(parsed.changes)) {
+            return parsed.changes
+                .map(c => `${c.field}: "${c.before}" → "${c.after}"`)
+                .join('; ')
+        }
+    } catch {
+        // Not JSON, return as-is
+    }
+    return description
 }
 
 function Dashboard() {
@@ -105,12 +120,9 @@ function Dashboard() {
             }
         }
 
-        // Initial fetch
         fetchData()
 
-        // Auto-refresh every 30 seconds
         const intervalId = setInterval(fetchData, 30000)
-
         return () => clearInterval(intervalId)
     }, [])
 
@@ -146,13 +158,12 @@ function Dashboard() {
         else return lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }
 
-    const LOG_PAGE_SIZE = 10 // Show 10 items per page for better overview
+    const LOG_PAGE_SIZE = 10
     const [logPage, setLogPage] = useState(0)
 
     const filteredLogs = useMemo(() => {
         if (!logs || logs.length === 0) return []
 
-        // Filter to show only activities from the last 24 hours
         const now = new Date()
         const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000)
 
@@ -447,8 +458,7 @@ function Dashboard() {
                         </Card>
                     )}
 
-                    <Card className={`h-full flex flex-col min-h-[318px] ${!viewOnly ? 'lg:col-start-3 lg:row-start-1' : ''
-                        }`}>
+                    <Card className={`h-full flex flex-col min-h-[318px] ${!viewOnly ? 'lg:col-start-3 lg:row-start-1' : ''}`}>
                         <CardHeader className="pb-3 pt-4 px-5">
                             <div>
                                 <CardTitle className="text-lg font-semibold text-white flex items-center gap-2">
@@ -513,10 +523,7 @@ function Dashboard() {
                                                     return (
                                                         <Cell
                                                             key={entry.status}
-                                                            fill={
-                                                                colorByStatus[entry.status] ||
-                                                                CHART_COLORS.statusMaintenance
-                                                            }
+                                                            fill={colorByStatus[entry.status] || CHART_COLORS.statusMaintenance}
                                                         />
                                                     )
                                                 })}
@@ -528,7 +535,7 @@ function Dashboard() {
                         </CardContent>
                     </Card>
 
-                    {/* Recent Activity - aligned with Location (same row) */}
+                    {/* Recent Activity */}
                     {!viewOnly && (
                         <Card className="lg:col-span-2 lg:row-start-2 flex flex-col max-h-[500px]">
                             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3 pt-4 px-5 flex-shrink-0">
@@ -565,7 +572,7 @@ function Dashboard() {
                                             </TableHeader>
                                             <TableBody>
                                                 {pagedLogs.map((log) => {
-                                                    // Determine item display and type
+                                                    // Determine item display
                                                     let itemDisplay = '—'
                                                     if (log.assetQrCode) {
                                                         itemDisplay = `Asset: ${log.assetQrCode?.slice(0, 10) || 'N/A'}`
@@ -575,10 +582,11 @@ function Dashboard() {
                                                         itemDisplay = `Unit: ${log.unit.qr_code || 'N/A'}`
                                                     }
 
-                                                    // Preference order: description > old/new status/location
+                                                    // Parse description — handles JSON or plain text
                                                     let detailsDisplay = '—'
-                                                    if (log.description) {
-                                                        detailsDisplay = log.description
+                                                    const parsedDesc = parseDescription(log.description)
+                                                    if (parsedDesc) {
+                                                        detailsDisplay = parsedDesc
                                                     } else if (log.oldStatus && log.newStatus) {
                                                         detailsDisplay = `${log.oldStatus} → ${log.newStatus}`
                                                     } else if (log.oldLocation && log.newLocation) {
@@ -610,9 +618,11 @@ function Dashboard() {
                                                             <TableCell className="px-5 py-3 text-gray-400 text-xs">
                                                                 <div className="flex items-center justify-between gap-2">
                                                                     <span className="truncate max-w-xs" title={detailsDisplay}>
-                                                                        {detailsDisplay.length > 50 ? `${detailsDisplay.substring(0, 50)}...` : detailsDisplay}
+                                                                        {detailsDisplay.length > 50
+                                                                            ? `${detailsDisplay.substring(0, 50)}...`
+                                                                            : detailsDisplay}
                                                                     </span>
-                                                                    {(log.description && (log.description.includes(';') || log.description.length > 50)) && (
+                                                                    {detailsDisplay !== '—' && detailsDisplay.length > 50 && (
                                                                         <Button
                                                                             variant="ghost"
                                                                             size="sm"
@@ -657,8 +667,7 @@ function Dashboard() {
                         </Card>
                     )}
 
-                    <Card className={`h-full flex flex-col min-h-[320px] ${!viewOnly ? 'lg:col-start-3 lg:row-start-2' : ''
-                        }`}>
+                    <Card className={`h-full flex flex-col min-h-[320px] ${!viewOnly ? 'lg:col-start-3 lg:row-start-2' : ''}`}>
                         <CardHeader className="pb-3 pt-4 px-5">
                             <div>
                                 <CardTitle className="text-lg font-semibold text-white flex items-center gap-2">
