@@ -34,13 +34,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import FullPageLoader from '../components/FullPageLoader'
 import TablePagination from '../components/TablePagination'
 
-const STATUS_ORDER = ['active', 'repair', 'broken', 'inactive', 'maintenance']
+const STATUS_ORDER = ['active', 'disposal', 'stock_in', 'broken', 'repair']
 const STATUS_LABELS = {
     active: 'Active',
-    repair: 'Repair',
+    disposal: 'Disposal',
+    stock_in: 'Stock in',
     broken: 'Broken',
-    inactive: 'Inactive',
-    maintenance: 'Maintenance',
+    repair: 'Repair',
 }
 
 const CHART_COLORS = {
@@ -54,8 +54,8 @@ const CHART_COLORS = {
     statusActive: '#10b981',
     statusRepair: '#f59e0b',
     statusBroken: '#ef4444',
-    statusInactive: '#6b7280',
-    statusMaintenance: '#8b5cf6',
+    statusDisposal: '#6b7280',
+    statusStockIn: '#3b82f6',
 }
 
 function toDateKeyLocal(date) {
@@ -99,13 +99,14 @@ function Dashboard() {
     const [selectedChangeLog, setSelectedChangeLog] = useState(null)
     const [changeDetailsOpen, setChangeDetailsOpen] = useState(false)
 
-    // Auto-refresh every 30 seconds for real-time activity monitoring
+    // Load data once on mount - polling removed to reduce bandwidth
+    // Note: This was polling every 30 seconds, causing 24+ GB bandwidth monthly
     useEffect(() => {
         const fetchData = async () => {
             try {
                 const [assetResponse, logResponse] = await Promise.all([
                     assetApi.listAssets(),
-                    activityApi.listLogs(250),
+                    activityApi.listLogs(100), // Reduced from 250 to 100
                 ])
 
                 setAssets(assetResponse.data)
@@ -121,9 +122,8 @@ function Dashboard() {
         }
 
         fetchData()
-
-        const intervalId = setInterval(fetchData, 30000)
-        return () => clearInterval(intervalId)
+        // REMOVED: setInterval polling (was causing massive bandwidth usage)
+        // Users can click refresh button for manual updates
     }, [])
 
     const handleRefresh = async () => {
@@ -517,13 +517,13 @@ function Dashboard() {
                                                         active: CHART_COLORS.statusActive,
                                                         repair: CHART_COLORS.statusRepair,
                                                         broken: CHART_COLORS.statusBroken,
-                                                        inactive: CHART_COLORS.statusInactive,
-                                                        maintenance: CHART_COLORS.statusMaintenance,
+                                                        disposal: CHART_COLORS.statusDisposal,
+                                                        stock_in: CHART_COLORS.statusStockIn,
                                                     }
                                                     return (
                                                         <Cell
                                                             key={entry.status}
-                                                            fill={colorByStatus[entry.status] || CHART_COLORS.statusMaintenance}
+                                                            fill={colorByStatus[entry.status] || CHART_COLORS.statusStockIn}
                                                         />
                                                     )
                                                 })}

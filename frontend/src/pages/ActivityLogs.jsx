@@ -1,5 +1,7 @@
 import { Activity, Search, RefreshCw } from 'lucide-react'
 import { useEffect, useState, useRef } from 'react'
+import { unitApi, monitorApi } from '../api'
+import { ToastContainer } from '../components/ui/Toast'
 import { activityApi } from '../api'
 import { Badge } from '../components/ui/Badge'
 import { capitalize } from '../lib/utils'
@@ -34,6 +36,17 @@ function ActivityLogs() {
     const [currentPage, setCurrentPage] = useState(1)
     const [selectedChangeLog, setSelectedChangeLog] = useState(null)
     const [changeDetailsOpen, setChangeDetailsOpen] = useState(false)
+    const [toasts, setToasts] = useState([])
+
+    const addToast = (message, type = 'success', duration = 3000) => {
+        setToasts(prev => {
+            const lastId = prev.length ? prev[prev.length - 1].id : 0
+            const id = lastId + 1
+            return [...prev, { id, message, type, duration }]
+        })
+    }
+
+    const removeToast = (id) => setToasts(prev => prev.filter(t => t.id !== id))
     const itemsPerPage = 10
     const startDateRef = useRef(null)
     const endDateRef = useRef(null)
@@ -144,7 +157,8 @@ function ActivityLogs() {
     }
 
     return (
-        <div className="content-full">
+        <>
+            <div className="content-full">
             <div className="content-centered">
                 <div className="pt-8 flex justify-between items-start">
                     <div>
@@ -326,19 +340,49 @@ function ActivityLogs() {
                                                         <span className="truncate max-w-sm" title={changesDisplay}>
                                                             {changesDisplay.length > 60 ? `${changesDisplay.substring(0, 60)}...` : changesDisplay}
                                                         </span>
-                                                        {log.description && (
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                className="text-lavender-400 hover:text-lavender-300 text-xs px-2 py-0.5 h-auto whitespace-nowrap"
-                                                                onClick={() => {
-                                                                    setSelectedChangeLog(log)
-                                                                    setChangeDetailsOpen(true)
-                                                                }}
-                                                            >
-                                                                View More →
-                                                            </Button>
-                                                        )}
+                                                        <div className="flex items-center gap-2">
+                                                            {log.description && (
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    className="text-lavender-400 hover:text-lavender-300 text-xs px-2 py-0.5 h-auto whitespace-nowrap"
+                                                                    onClick={() => {
+                                                                        setSelectedChangeLog(log)
+                                                                        setChangeDetailsOpen(true)
+                                                                    }}
+                                                                >
+                                                                    View More →
+                                                                </Button>
+                                                            )}
+
+                                                            {log.action === 'deleted' && (() => {
+                                                                const qr = (log.deletedItemQr || log.itemQr || log.assetQrCode || '').toString()
+                                                                if (!qr) return null
+                                                                const isUnit = qr.toUpperCase().startsWith('UNIT')
+                                                                const isMon = qr.toUpperCase().startsWith('MON')
+                                                                if (!isUnit && !isMon) return null
+
+                                                                return (
+                                                                    <Button
+                                                                        size="sm"
+                                                                        variant="secondary"
+                                                                        onClick={async () => {
+                                                                            try {
+                                                                                const restoreId = log.assetId || log.id
+                                                                                if (isUnit) await unitApi.restoreFromLog(restoreId)
+                                                                                else await monitorApi.restoreFromLog(restoreId)
+                                                                                addToast('Restored successfully', 'success')
+                                                                                await fetchLogs()
+                                                                            } catch (err) {
+                                                                                addToast(err.response?.data?.message || 'Failed to restore', 'error')
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        Restore
+                                                                    </Button>
+                                                                )
+                                                            })()}
+                                                        </div>
                                                     </div>
                                                 </TableCell>
                                             </TableRow>
@@ -370,13 +414,16 @@ function ActivityLogs() {
                     </div>
                 )}
             </div>
+            </div>
 
             <ChangeDetailsModal
                 isOpen={changeDetailsOpen}
                 onClose={() => setChangeDetailsOpen(false)}
                 log={selectedChangeLog}
             />
-        </div>
+
+            <ToastContainer toasts={toasts} onRemove={removeToast} />
+        </>
     )
 }
 

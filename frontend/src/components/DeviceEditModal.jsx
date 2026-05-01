@@ -444,8 +444,8 @@ export default function DeviceEditModal({
                                 </label>
                                 <Select name="status" value={draft.status} onChange={handleChange} className={showValidationErrors && !draft.status.trim() ? 'border-red-500 border-2' : ''}>
                                     <option value="active">Active</option>
-                                    <option value="inactive">Inactive</option>
-                                    <option value="maintenance">Maintenance</option>
+                                    <option value="disposal">Disposal</option>
+                                    <option value="stock_in">Stock in</option>
                                     <option value="broken">Broken</option>
                                     <option value="repair">Repair</option>
                                 </Select>

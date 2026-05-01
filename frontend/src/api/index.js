@@ -35,6 +35,8 @@ export const assetApi = {
 
 export const unitApi = {
     listUnits: () => api.get('/units'),
+    listArchivedUnits: () => api.get('/units/archived'),
+    restoreFromLog: (logId) => api.post(`/units/restore/${logId}`),
     createUnit: ({ deviceName, qrCode, status, location, condition, modelType, serialNumber, description, notes, imageData } = {}) =>
         api.post('/units', { deviceName, qrCode, status, location, condition, modelType, serialNumber, description, notes, imageData }),
     updateUnit: (id, payload = {}) => api.patch(`/units/${id}`, payload),
@@ -43,6 +45,8 @@ export const unitApi = {
 
 export const monitorApi = {
     listMonitors: () => api.get('/monitors'),
+    listArchivedMonitors: () => api.get('/monitors/archived'),
+    restoreFromLog: (logId) => api.post(`/monitors/restore/${logId}`),
     createMonitor: ({ deviceName, qrCode, status, modelType, serialNumber, condition, description, notes, linkedUnitId, imageData } = {}) =>
         api.post('/monitors', { deviceName, qrCode, status, modelType, serialNumber, condition, description, notes, linkedUnitId, imageData }),
     updateMonitor: (id, payload = {}) => api.patch(`/monitors/${id}`, payload),

@@ -16,3 +16,24 @@ export function formatId(id) {
     const lastEight = id.slice(-8)
     return `Infocom_${lastEight}`
 }
+
+export function groupMonitorsByUnit(monitors) {
+    if (!monitors || !Array.isArray(monitors)) return []
+    
+    const grouped = {}
+    monitors.forEach(monitor => {
+        const unitId = monitor.linkedUnit?.id
+        if (unitId && !grouped[unitId]) {
+            grouped[unitId] = {
+                unitId,
+                unitName: monitor.linkedUnit?.deviceName || 'Unknown Unit',
+                serialNumber: monitor.linkedUnit?.serialNumber,
+                monitors: []
+            }
+        }
+        if (unitId) {
+            grouped[unitId].monitors.push(monitor)
+        }
+    })
+    return Object.values(grouped)
+}

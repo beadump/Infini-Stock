@@ -109,7 +109,8 @@ async function listAssets(req, res) {
                 type: asset.type,
                 status: asset.status,
                 location: asset.location,
-                imageData: asset.image_data || null,
+                // REMOVED: imageData - was causing 24+ GB bandwidth drain
+                // Fetch images separately only when needed (in detail views)
                 description: asset.description || null,
                 parentId: asset.parent?.id || null,
                 parentQrCode: asset.parent?.qr_code || null,

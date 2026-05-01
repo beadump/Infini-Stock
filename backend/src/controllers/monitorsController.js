@@ -38,7 +38,7 @@ async function createMonitor(req, res) {
             notes: notes || null,
             image_data: imageData || null,
             created_by: req.auth.userId,
-            linkedUnit,
+            linkedAsset: linkedUnit,
         })
 
         const saved = await assetRepo.save(monitor)
@@ -91,7 +91,7 @@ async function listMonitors(req, res) {
     try {
         const assetRepo = AppDataSource.getRepository('Asset')
         const monitors = await assetRepo.find({
-            where: { type: 'monitor' },
+            where: { type: 'monitor', is_archived: false },
             relations: { creator: true, linkedAsset: true },
             order: { created_at: 'DESC' },
         })
@@ -213,6 +213,7 @@ async function updateMonitor(req, res) {
                 const oldUnitName = oldUnit ? (oldUnit.description || oldUnit.qr_code) : `(ID: ${monitor.linked_unit_id})`
                 changeDetails.push({ field: 'Linked Unit', before: oldUnitName, after: '(removed)' })
                 monitor.linked_unit_id = null
+                monitor.linkedAsset = null
             }
         } else if (typeof linkedUnitId === 'string') {
             const unit = await assetRepo.findOne({ where: { id: linkedUnitId, type: 'unit' } })
@@ -231,6 +232,7 @@ async function updateMonitor(req, res) {
                     after: unit.description || unit.qr_code
                 })
                 monitor.linked_unit_id = unit.id
+                monitor.linkedAsset = unit
             }
         }
 
@@ -297,13 +299,35 @@ async function deleteMonitor(req, res) {
             return res.status(404).json({ message: 'Monitor not found' })
         }
 
-        // Log activity BEFORE deleting
+            // Verify we have the current state by checking relations
+            const currentMonitor = await assetRepo.findOne({
+                where: { id, type: 'monitor' },
+                relations: { linkedAsset: true }
+            })
+
+        // Log activity BEFORE deleting. Include a JSON payload in `description` with richer deleted-item details for restore
         try {
+            let linkedItemQr = null
+                if (currentMonitor?.linkedAsset?.id) {
+                    linkedItemQr = currentMonitor.linkedAsset.qr_code
+            }
+
+            const deletedPayload = {
+                model_type: monitor.model_type || null,
+                serial_number: monitor.serial_number || null,
+                notes: monitor.notes || null,
+                image_data: monitor.image_data || null,
+                condition: monitor.condition || null,
+                location: monitor.location || null,
+                status: monitor.status || 'active',
+                linked_item_qr: linkedItemQr,
+            }
+
             const activityLogData = {
                 action: 'deleted',
                 asset_id: id,
                 user_id: req.auth.userId,
-                description: `Deleted monitor (${monitor.qr_code})`,
+                description: JSON.stringify({ message: `Deleted monitor (${monitor.qr_code})`, deleted_item: deletedPayload }),
                 deleted_item_name: monitor.description || monitor.qr_code,
                 deleted_item_qr: monitor.qr_code,
                 item_name: monitor.description || monitor.qr_code,
@@ -314,7 +338,10 @@ async function deleteMonitor(req, res) {
             console.error('Failed to log monitor deletion activity:', logError.message)
         }
 
-        await assetRepo.remove(monitor)
+        // Soft delete: mark as archived instead of removing
+        monitor.is_archived = true
+        monitor.archived_at = new Date()
+        await assetRepo.save(monitor)
 
         return ok(res, { message: 'Monitor deleted successfully' })
     } catch (error) {
@@ -323,9 +350,105 @@ async function deleteMonitor(req, res) {
     }
 }
 
+async function listArchivedMonitors(req, res) {
+    try {
+        const assetRepo = AppDataSource.getRepository('Asset')
+        const monitors = await assetRepo.find({
+            where: { type: 'monitor', is_archived: true },
+            relations: { creator: true, linkedAsset: true },
+            order: { archived_at: 'DESC' },
+        })
+
+        return ok(
+            res,
+            monitors.map((monitor) => ({
+                id: monitor.id,
+                qrCode: monitor.qr_code,
+                deviceName: monitor.description || monitor.qr_code,
+                deletedAt: monitor.archived_at,
+                deletedBy: monitor.creator?.full_name || null,
+                status: monitor.status,
+                condition: monitor.condition,
+                location: monitor.location,
+                modelType: monitor.model_type,
+                serialNumber: monitor.serial_number,
+                notes: monitor.notes,
+                imageData: monitor.image_data,
+                linkedUnit: monitor.linkedAsset
+                    ? {
+                        id: monitor.linkedAsset.id,
+                        deviceName: monitor.linkedAsset.description || monitor.linkedAsset.qr_code,
+                        qrCode: monitor.linkedAsset.qr_code,
+                    }
+                    : null,
+            }))
+        )
+    } catch (error) {
+        console.error('List archived monitors error:', error)
+        return serverError(res, 'Failed to list archived monitors')
+    }
+}
+
+async function restoreMonitor(req, res) {
+    try {
+        const { logId } = req.params
+        const assetRepo = AppDataSource.getRepository('Asset')
+        const activityRepo = AppDataSource.getRepository('ActivityLog')
+
+        // Accept either the archived asset id or the activity log id
+        let monitor = await assetRepo.findOne({ where: { id: logId, type: 'monitor', is_archived: true } })
+        if (!monitor) {
+            const sourceLog = await activityRepo.findOne({ where: { id: logId } })
+            if (sourceLog?.asset_id) {
+                monitor = await assetRepo.findOne({ where: { id: sourceLog.asset_id, type: 'monitor', is_archived: true } })
+            }
+        }
+        if (!monitor) {
+            return res.status(404).json({ message: 'Archived monitor not found' })
+        }
+
+        // Restore: unarchive the monitor
+            monitor.is_archived = false
+            monitor.archived_at = null
+
+            // Verify linked unit still exists and is not archived
+            if (monitor.linked_unit_id) {
+                const linkedUnit = await assetRepo.findOne({
+                    where: { id: monitor.linked_unit_id, type: 'unit', is_archived: false }
+                })
+                if (!linkedUnit) {
+                    // Linked unit doesn't exist or is archived - clear the link
+                    monitor.linked_unit_id = null
+                }
+            }
+
+        const restored = await assetRepo.save(monitor)
+
+        // Log restore activity
+        await activityRepo.save(
+            activityRepo.create({
+                action: 'restored',
+                asset_id: restored.id,
+                user_id: req.auth.userId,
+                description: `Restored monitor (${restored.qr_code})`,
+                item_name: restored.description || restored.qr_code,
+                item_qr: restored.qr_code,
+            })
+        )
+
+        return ok(res, { message: 'Monitor restored', id: restored.id, qrCode: restored.qr_code })
+    } catch (error) {
+        console.error('Restore monitor error:', error)
+        return serverError(res, 'Failed to restore monitor')
+    }
+}
+
 module.exports = {
     createMonitor,
     listMonitors,
     updateMonitor,
     deleteMonitor,
+    listArchivedMonitors,
+    restoreMonitor,
 }
+

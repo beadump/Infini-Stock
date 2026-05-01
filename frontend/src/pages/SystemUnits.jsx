@@ -1,9 +1,10 @@
 import { Download, Image, MoreHorizontal, Pencil, Plus, Package, Trash2, Activity, Trash, Printer, RefreshCw, Upload, Info, Eye } from 'lucide-react'
 import { useEffect, useState, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import QRCode from 'react-qr-code'
 import { unitApi, monitorApi } from '../api'
 import { Badge } from '../components/ui/Badge'
-import { capitalize, formatId } from '../lib/utils'
+import { capitalize, formatId, groupMonitorsByUnit } from '../lib/utils'
 import { clampRowCount, exportToCsv } from '../lib/export'
 import { canEditData, isViewOnly, isTechnicianLimitedOps, getTechnicianOperations } from '../lib/permissions'
 import { Button } from '../components/ui/Button'
@@ -25,6 +26,7 @@ function SystemUnits() {
     const isTechnicianLimited = isTechnicianLimitedOps()
     const technicianOps = getTechnicianOperations()
     const dialogState = useDialog()
+    const navigate = useNavigate()
     const exportDialogState = useDialog()
     const detailsDialogState = useDialog()
     const editDialogState = useDialog()
@@ -91,25 +93,6 @@ function SystemUnits() {
         const dt = new Date(value)
         if (Number.isNaN(dt.getTime())) return '—'
         return dt.toLocaleString()
-    }
-
-    // Helper to group monitors by their linked unit
-    const groupMonitorsByUnit = (monitors) => {
-        const grouped = {}
-        monitors.forEach(monitor => {
-            const unitId = monitor.linkedUnit?.id
-            if (!grouped[unitId]) {
-                const linkedUnit = units.find(u => u.id === unitId)
-                grouped[unitId] = {
-                    unitId,
-                    unitName: linkedUnit?.deviceName || 'Unknown Unit',
-                    serialNumber: linkedUnit?.serialNumber,
-                    monitors: []
-                }
-            }
-            grouped[unitId].monitors.push(monitor)
-        })
-        return Object.values(grouped)
     }
 
     const fileToDataUrl = (file) => {
@@ -265,10 +248,10 @@ function SystemUnits() {
     const getStatusVariant = (status) => {
         const variants = {
             active: 'success',
-            maintenance: 'warning',
-            inactive: 'secondary',
+            disposal: 'destructive',
+            stock_in: 'secondary',
             broken: 'destructive',
-            repair: 'destructive',
+            repair: 'warning',
         }
 
         return variants[status] || 'outline'
@@ -507,14 +490,14 @@ function SystemUnits() {
             count: units.filter((unit) => unit.status === 'active').length,
         },
         {
-            key: 'maintenance',
-            label: 'Maintenance',
-            count: units.filter((unit) => unit.status === 'maintenance').length,
+            key: 'disposal',
+            label: 'Disposal',
+            count: units.filter((unit) => unit.status === 'disposal').length,
         },
         {
-            key: 'inactive',
-            label: 'Inactive',
-            count: units.filter((unit) => unit.status === 'inactive').length,
+            key: 'stock_in',
+            label: 'Stock in',
+            count: units.filter((unit) => unit.status === 'stock_in').length,
         },
         {
             key: 'broken',
@@ -699,6 +682,11 @@ function SystemUnits() {
                             <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
                             {refreshing ? 'Refreshing...' : 'Refresh'}
                         </Button>
+
+                        <Button variant="secondary" onClick={() => navigate('/units/archived')}>
+                            <Trash size={16} className="mr-2" />
+                            Archives
+                        </Button>
                         <Dialog open={exportDialogState.open} onOpenChange={exportDialogState.onOpenChange}>
                             <DialogTrigger asChild>
                                 <Button variant="secondary">
@@ -848,8 +836,8 @@ function SystemUnits() {
                                                     className={showValidationErrors && !formData.status.trim() ? 'border-red-500 border-2' : ''}
                                                 >
                                                     <option value="active">Active</option>
-                                                    <option value="inactive">Inactive</option>
-                                                    <option value="maintenance">Maintenance</option>
+                                                    <option value="disposal">Disposal</option>
+                                                    <option value="stock_in">Stock in</option>
                                                     <option value="broken">Broken</option>
                                                     <option value="repair">Repair</option>
                                                 </Select>

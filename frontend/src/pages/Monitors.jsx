@@ -1,9 +1,10 @@
 import { Download, Image, MoreHorizontal, Pencil, Plus, Monitor, Trash2, Activity, Trash, Printer, RefreshCw, Upload, Info, Eye } from 'lucide-react'
 import { useEffect, useState, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import QRCode from 'react-qr-code'
 import { monitorApi, unitApi } from '../api'
 import { Badge } from '../components/ui/Badge'
-import { capitalize, formatId } from '../lib/utils'
+import { capitalize, formatId, groupMonitorsByUnit } from '../lib/utils'
 import { clampRowCount, exportToCsv } from '../lib/export'
 import { canEditData, isViewOnly, isTechnicianLimitedOps, getTechnicianOperations } from '../lib/permissions'
 import { Button } from '../components/ui/Button'
@@ -26,6 +27,7 @@ function Monitors() {
     const isTechnicianLimited = isTechnicianLimitedOps()
     const technicianOps = getTechnicianOperations()
     const dialogState = useDialog()
+    const navigate = useNavigate()
     const exportDialogState = useDialog()
     const detailsDialogState = useDialog()
     const editDialogState = useDialog()
@@ -265,10 +267,10 @@ function Monitors() {
     const getStatusVariant = (status) => {
         const variants = {
             active: 'success',
-            maintenance: 'warning',
-            inactive: 'secondary',
+            disposal: 'destructive',
+            stock_in: 'secondary',
             broken: 'destructive',
-            repair: 'destructive',
+            repair: 'warning',
         }
 
         return variants[status] || 'outline'
@@ -304,11 +306,12 @@ function Monitors() {
         // Check if any monitor has a linked unit BEFORE attempting deletion
         const monitorsWithLinks = pagedMonitors.filter(m => idsToDelete.includes(m.id) && m.linkedUnit)
         if (monitorsWithLinks.length > 0) {
+            const groupedByUnit = groupMonitorsByUnit(monitorsWithLinks)
             setLinkedAssetsError({
                 count: monitorsWithLinks.length,
                 message: `${monitorsWithLinks.length} monitor(s) are linked to system units. Please unlink them before deletion.`,
                 item: { deviceName: 'Selected monitors' },
-                assets: monitorsWithLinks.map(m => m.linkedUnit).filter(Boolean)
+                assets: groupedByUnit
             })
             setLinkedAssetsModalOpen(true)
             return
@@ -351,11 +354,18 @@ function Monitors() {
 
         // Check if monitor has a linked unit BEFORE attempting deletion
         if (currentActionItem.linkedUnit) {
+            // Format linked unit as grouped monitors for the modal
+            const grouped = [{
+                unitId: currentActionItem.linkedUnit.id,
+                unitName: currentActionItem.linkedUnit.deviceName || 'Unknown Unit',
+                serialNumber: currentActionItem.linkedUnit.serialNumber,
+                monitors: [currentActionItem]
+            }]
             setLinkedAssetsError({
                 count: 1,
                 message: `This monitor is linked to a system unit. Please unlink it before deletion.`,
                 item: currentActionItem,
-                assets: [currentActionItem.linkedUnit]
+                assets: grouped
             })
             setLinkedAssetsModalOpen(true)
             return
@@ -388,7 +398,12 @@ function Monitors() {
                         count,
                         message: errorMsg,
                         item: currentActionItem,
-                        assets: linkedUnits
+                        assets: linkedUnits.map(u => ({
+                            unitId: u.id,
+                            unitName: u.deviceName || 'Unknown Unit',
+                            serialNumber: u.serialNumber,
+                            monitors: [currentActionItem]
+                        }))
                     })
                 } catch {
                     setLinkedAssetsError({
@@ -456,14 +471,14 @@ function Monitors() {
             count: monitors.filter((monitor) => monitor.status === 'active').length,
         },
         {
-            key: 'maintenance',
-            label: 'Maintenance',
-            count: monitors.filter((monitor) => monitor.status === 'maintenance').length,
+            key: 'disposal',
+            label: 'Disposal',
+            count: monitors.filter((monitor) => monitor.status === 'disposal').length,
         },
         {
-            key: 'inactive',
-            label: 'Inactive',
-            count: monitors.filter((monitor) => monitor.status === 'inactive').length,
+            key: 'stock_in',
+            label: 'Stock in',
+            count: monitors.filter((monitor) => monitor.status === 'stock_in').length,
         },
         {
             key: 'broken',
@@ -654,6 +669,11 @@ function Monitors() {
                             <RefreshCw size={18} className={refreshing ? 'animate-spin' : ''} />
                             {refreshing ? 'Refreshing...' : 'Refresh'}
                         </Button>
+
+                        <Button variant="secondary" onClick={() => navigate('/monitors/archived')}>
+                            <Trash size={16} className="mr-2" />
+                            Archives
+                        </Button>
                         <Dialog open={exportDialogState.open} onOpenChange={exportDialogState.onOpenChange}>
                             <DialogTrigger asChild>
                                 <Button variant="secondary">
@@ -803,8 +823,8 @@ function Monitors() {
                                                     className={showValidationErrors && !formData.status.trim() ? 'border-red-500 border-2' : ''}
                                                 >
                                                     <option value="active">Active</option>
-                                                    <option value="inactive">Inactive</option>
-                                                    <option value="maintenance">Maintenance</option>
+                                                    <option value="disposal">Disposal</option>
+                                                    <option value="stock_in">Stock in</option>
                                                     <option value="broken">Broken</option>
                                                     <option value="repair">Repair</option>
                                                 </Select>

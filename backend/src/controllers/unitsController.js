@@ -75,7 +75,7 @@ async function listUnits(req, res) {
     try {
         const assetRepo = AppDataSource.getRepository('Asset')
         const units = await assetRepo.find({
-            where: { type: 'unit' },
+            where: { type: 'unit', is_archived: false },
             relations: { creator: true },
             order: { created_at: 'DESC' },
         })
@@ -232,13 +232,23 @@ async function deleteUnit(req, res) {
             return res.status(404).json({ message: 'Unit not found' })
         }
 
-        // Log activity BEFORE deleting
+        // Log activity BEFORE archiving
         try {
+            const deletedPayload = {
+                model_type: unit.model_type || null,
+                serial_number: unit.serial_number || null,
+                notes: unit.notes || null,
+                image_data: unit.image_data || null,
+                condition: unit.condition || null,
+                location: unit.location || null,
+                status: unit.status || 'active',
+            }
+
             const activityLogData = {
                 action: 'deleted',
                 asset_id: id,
                 user_id: req.auth.userId,
-                description: `Deleted unit (${unit.qr_code})`,
+                description: JSON.stringify({ message: `Deleted unit (${unit.qr_code})`, deleted_item: deletedPayload }),
                 deleted_item_name: unit.description || unit.qr_code,
                 deleted_item_qr: unit.qr_code,
                 item_name: unit.description || unit.qr_code,
@@ -249,7 +259,10 @@ async function deleteUnit(req, res) {
             console.error('Failed to log unit deletion activity:', logError.message)
         }
 
-        await assetRepo.remove(unit)
+        // Soft delete: mark as archived instead of removing
+        unit.is_archived = true
+        unit.archived_at = new Date()
+        await assetRepo.save(unit)
 
         return ok(res, { message: 'Unit deleted successfully' })
     } catch (error) {
@@ -258,9 +271,84 @@ async function deleteUnit(req, res) {
     }
 }
 
+async function listArchivedUnits(req, res) {
+    try {
+        const assetRepo = AppDataSource.getRepository('Asset')
+        const units = await assetRepo.find({
+            where: { type: 'unit', is_archived: true },
+            relations: { creator: true },
+            order: { archived_at: 'DESC' },
+        })
+
+        return ok(
+            res,
+            units.map((unit) => ({
+                id: unit.id,
+                qrCode: unit.qr_code,
+                deviceName: unit.description || unit.qr_code,
+                deletedAt: unit.archived_at,
+                deletedBy: unit.creator?.full_name || null,
+                status: unit.status,
+                condition: unit.condition,
+                location: unit.location,
+                modelType: unit.model_type,
+                serialNumber: unit.serial_number,
+                notes: unit.notes,
+                imageData: unit.image_data,
+            }))
+        )
+    } catch (error) {
+        console.error('List archived units error:', error)
+        return serverError(res, 'Failed to list archived units')
+    }
+}
+async function restoreUnit(req, res) {
+    try {
+        const { logId } = req.params
+        const assetRepo = AppDataSource.getRepository('Asset')
+        const activityRepo = AppDataSource.getRepository('ActivityLog')
+
+        // Accept either the archived asset id or the activity log id
+        let unit = await assetRepo.findOne({ where: { id: logId, type: 'unit', is_archived: true } })
+        if (!unit) {
+            const sourceLog = await activityRepo.findOne({ where: { id: logId } })
+            if (sourceLog?.asset_id) {
+                unit = await assetRepo.findOne({ where: { id: sourceLog.asset_id, type: 'unit', is_archived: true } })
+            }
+        }
+        if (!unit) {
+            return res.status(404).json({ message: 'Archived unit not found' })
+        }
+
+        // Restore: unarchive the unit
+        unit.is_archived = false
+        unit.archived_at = null
+        const restored = await assetRepo.save(unit)
+
+        // Log restore activity
+        await activityRepo.save(
+            activityRepo.create({
+                action: 'restored',
+                asset_id: restored.id,
+                user_id: req.auth.userId,
+                description: `Restored unit (${restored.qr_code})`,
+                item_name: restored.description || restored.qr_code,
+                item_qr: restored.qr_code,
+            })
+        )
+
+        return ok(res, { message: 'Unit restored', id: restored.id, qrCode: restored.qr_code })
+    } catch (error) {
+        console.error('Restore unit error:', error)
+        return serverError(res, 'Failed to restore unit')
+    }
+}
+
 module.exports = {
     createUnit,
     listUnits,
     updateUnit,
     deleteUnit,
+    listArchivedUnits,
+    restoreUnit,
 }

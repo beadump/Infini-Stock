@@ -5,6 +5,7 @@ import Header from './components/Header'
 import Dashboard from './pages/Dashboard'
 import SystemUnits from './pages/SystemUnits'
 import Monitors from './pages/Monitors'
+import Archived from './pages/Archived'
 import ActivityLogs from './pages/ActivityLogs'
 import Users from './pages/Users'
 import Login from './pages/Login'
@@ -70,7 +71,9 @@ function App() {
                                         <Routes>
                                             <Route path="/" element={<Dashboard />} />
                                             <Route path="/units" element={<SystemUnits />} />
+                                            <Route path="/units/archived" element={<Archived type="unit" />} />
                                             <Route path="/monitors" element={<Monitors />} />
+                                            <Route path="/monitors/archived" element={<Archived type="monitor" />} />
                                             <Route path="/logs" element={<ActivityLogs />} />
                                             <Route path="/admin/users" element={<Users />} />
                                             <Route path="*" element={<Navigate to="/" replace />} />

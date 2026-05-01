@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { LogIn } from 'lucide-react'
+import infocomLogo from '../assets/infocom-logo.png'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import ShapeGrid from '../components/ShapeGrid'
@@ -25,8 +25,7 @@ function Login() {
         setLoading(true)
 
         try {
-            // Call backend login endpoint
-            const apiUrl = 'https://infini-stock.onrender.com/api'
+            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
             const response = await fetch(`${apiUrl}/auth/login`, {
                 method: 'POST',
                 headers: {
@@ -84,15 +83,9 @@ function Login() {
                 <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-8 shadow-2xl shadow-black/40">
                     {/* Header */}
                     <div className="text-center mb-8">
-                        <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-white mb-4">
-                            <LogIn className="text-[#171717]" size={24} />
-                        </div>
-                        <h1 className="text-3xl font-bold text-white mb-2">
-                            InfoTrack
-                        </h1>
-                        <p className="text-gray-400">
-                            Sign in to your account
-                        </p>
+                        <img src={infocomLogo} alt="Infocom" className="mx-auto h-14 mb-3" />
+                        <h1 className="text-2xl font-bold text-white mb-2">InfoTrack</h1>
+                        <p className="text-gray-400">Sign in to your account</p>
                     </div>
 
                     {/* Error Message */}

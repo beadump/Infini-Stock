@@ -79,6 +79,15 @@ module.exports = new EntitySchema({
             type: 'uuid',
             nullable: true,
         },
+        is_archived: {
+            type: 'boolean',
+            nullable: false,
+            default: false,
+        },
+        archived_at: {
+            type: 'timestamp with time zone',
+            nullable: true,
+        },
     },
     relations: {
         parent: {

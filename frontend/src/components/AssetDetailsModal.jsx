@@ -7,18 +7,18 @@ import { formatId } from '../lib/utils'
 
 const STATUS_LABELS = {
     active: 'Active',
-    repair: 'Repair',
+    disposal: 'Disposal',
+    stock_in: 'Stock in',
     broken: 'Broken',
-    inactive: 'Inactive',
-    maintenance: 'Maintenance',
+    repair: 'Repair',
 }
 
 const STATUS_COLORS = {
     active: 'bg-green-500/20 text-green-400 border-green-500/30',
+    disposal: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+    stock_in: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
     repair: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
     broken: 'bg-red-500/20 text-red-400 border-red-500/30',
-    inactive: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
-    maintenance: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
 }
 
 const formatValue = (value) => {
@@ -108,7 +108,7 @@ export function AssetDetailsModal({ isOpen, onClose, asset, loading = false, onE
                                     <div className="rounded-lg border border-[#3d2e5c] bg-[#0f0a1a] p-4">
                                         <span className="text-xs font-semibold uppercase tracking-wider text-gray-400">Status</span>
                                         <div className="mt-2">
-                                            <Badge className={`border ${STATUS_COLORS[asset.status] || STATUS_COLORS.inactive}`}>
+                                            <Badge className={`border ${STATUS_COLORS[asset.status] || STATUS_COLORS.stock_in}`}>
                                                 {STATUS_LABELS[asset.status] || asset.status}
                                             </Badge>
                                         </div>

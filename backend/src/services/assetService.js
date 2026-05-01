@@ -6,10 +6,14 @@ function generateQrCandidate(type) {
     return `${prefix}-${crypto.randomUUID()}`
 }
 
-async function getAssetByQr(qrCode) {
+async function getAssetByQr(qrCode, includeArchived = false) {
     const assetRepo = AppDataSource.getRepository('Asset')
+    const where = { qr_code: qrCode }
+    if (!includeArchived) {
+        where.is_archived = false
+    }
     return assetRepo.findOne({
-        where: { qr_code: qrCode },
+        where,
         relations: { parent: true, children: true, creator: true },
     })
 }
@@ -17,6 +21,7 @@ async function getAssetByQr(qrCode) {
 async function listAssets() {
     const assetRepo = AppDataSource.getRepository('Asset')
     return assetRepo.find({
+        where: { is_archived: false },
         relations: { parent: true, creator: true },
         order: { created_at: 'DESC' },
     })

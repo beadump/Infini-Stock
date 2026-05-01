@@ -1,4 +1,4 @@
-import { BarChart3, Package, Monitor, Activity, Users, Menu, X, LogOut } from 'lucide-react'
+import { BarChart3, Package, Monitor, Activity, Users, Menu, X, LogOut, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, useDialog } from './ui/Dialog'
@@ -7,6 +7,7 @@ import infocomLogo from '../assets/infocom-logo.png'
 
 function Sidebar() {
     const [open, setOpen] = useState(true)
+    const [openSubnav, setOpenSubnav] = useState({ '/units': false, '/monitors': false })
     const location = useLocation()
     const navigate = useNavigate()
     const logoutDialog = useDialog()
@@ -20,11 +21,27 @@ function Sidebar() {
             title: 'Overview',
             items: [{ path: '/', label: 'Dashboard', icon: BarChart3 }],
         },
-        {
+                {
             title: 'Device Management',
             items: [
-                { path: '/units', label: 'System Units', icon: Package },
-                { path: '/monitors', label: 'Monitors', icon: Monitor },
+                {
+                    path: '/units',
+                    label: 'System Units',
+                    icon: Package,
+                    children: [
+                        { path: '/units', label: 'All Units' },
+                        { path: '/units/archived', label: 'Archived Units' },
+                    ],
+                },
+                {
+                    path: '/monitors',
+                    label: 'Monitors',
+                    icon: Monitor,
+                    children: [
+                        { path: '/monitors', label: 'All Monitors' },
+                        { path: '/monitors/archived', label: 'Archived Monitors' },
+                    ],
+                },
             ],
         },
         // Account Management - hidden entirely for staff and viewer
@@ -39,7 +56,11 @@ function Sidebar() {
         }] : []),
     ]
 
-    const isActive = (path) => location.pathname === path
+    const isActive = (path, exact = false) => {
+        if (path === '/') return location.pathname === '/'
+        if (exact) return location.pathname === path
+        return location.pathname === path || location.pathname.startsWith(path + '/')
+    }
 
     const handleLogout = () => {
         logoutDialog.onOpenChange(true)
@@ -51,6 +72,10 @@ function Sidebar() {
         window.dispatchEvent(new Event('auth-change'))
         logoutDialog.onOpenChange(false)
         navigate('/login')
+    }
+
+    const toggleSubnav = (path) => {
+        setOpenSubnav((s) => ({ ...s, [path]: !s[path] }))
     }
 
     return (
@@ -71,7 +96,7 @@ function Sidebar() {
             )}
 
             <aside
-                className={`fixed left-0 top-0 h-screen w-64 bg-[#190F2B] border-r border-[#3d2e5c] text-gray-100 transition-transform duration-300 ease-in-out z-20 md:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'
+                className={`fixed left-0 top-0 h-screen w-64 bg-[#190F2B] border-r border-[#3d2e5c] text-gray-100 transition-all duration-300 ease-in-out z-20 md:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'
                     }`}
             >
                 <div className="h-full flex flex-col">
@@ -92,20 +117,67 @@ function Sidebar() {
                                     {group.title}
                                 </p>
                                 <div className="space-y-1">
-                                    {group.items.map(({ path, label, icon: Icon }) => (
-                                        <Link
-                                            key={path}
-                                            to={path}
-                                            onClick={() => setOpen(false)}
-                                            className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${isActive(path)
-                                                ? 'bg-[#311850] text-lavender-300 border-l-2 border-lavender-600'
-                                                : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
-                                                }`}
-                                        >
-                                            <Icon size={20} />
-                                            <span className={`text-sm ${isActive(path) ? 'font-bold' : 'font-medium'}`}>{label}</span>
-                                        </Link>
-                                    ))}
+                                     {group.items.map((item) => {
+                                        const Icon = item.icon
+                                        if (item.children && item.children.length > 0) {
+                                            const expanded = !!openSubnav[item.path]
+                                            return (
+                                                <div key={item.path} className="px-2 ">
+                                                    <div
+                                                        role="button"
+                                                        tabIndex={0}
+                                                        onClick={() => toggleSubnav(item.path)}
+                                                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSubnav(item.path) } }}
+                                                        className={`flex items-center justify-between gap-3 px-4 py-3 rounded-lg transition-all cursor-pointer ${isActive(item.path)
+                                                            ? 'bg-[#311850] text-lavender-300 border-l-2 border-lavender-600'
+                                                            : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
+                                                            }`}
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            {Icon && <Icon size={20} />}
+                                                            <span className={`text-sm ${isActive(item.path) ? 'font-bold' : 'font-medium'}`}>{item.label}</span>
+                                                        </div>
+                                                        <button onClick={(ev) => { ev.stopPropagation(); toggleSubnav(item.path) }} className="p-1 rounded hover:bg-white/5">
+                                                            <ChevronDown size={16} className={`${expanded ? 'rotate-180' : ''} transition-transform`} />
+                                                        </button>
+                                                    </div>
+                                                    {expanded && (
+                                                        <div className="mt-1 ml-4 space-y-1">
+                                                            {item.children.map((child) => (
+                                                                <Link
+                                                                    key={child.path}
+                                                                    to={child.path}
+                                                                    onClick={() => setOpen(false)}
+                                                                    className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${isActive(child.path, true)
+                                                                        ? 'bg-[#2b2142] text-lavender-200 font-semibold'
+                                                                        : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
+                                                                        }`}
+                                                                >
+                                                                    {Icon && <Icon size={16} />}
+                                                                    <span className={`text-sm ${isActive(child.path, true) ? 'font-semibold' : 'font-medium'}`}>{child.label}</span>
+                                                                </Link>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )
+                                        }
+
+                                        return (
+                                            <Link
+                                                key={item.path}
+                                                to={item.path}
+                                                onClick={() => setOpen(false)}
+                                                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${isActive(item.path)
+                                                    ? 'bg-[#311850] text-lavender-300 border-l-2 border-lavender-600'
+                                                    : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
+                                                    }`}
+                                            >
+                                                {Icon && <Icon size={20} />}
+                                                <span className={`text-sm ${isActive(item.path) ? 'font-bold' : 'font-medium'}`}>{item.label}</span>
+                                            </Link>
+                                        )
+                                    })}
                                 </div>
                             </div>
                         ))}
